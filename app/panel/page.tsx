@@ -1,3 +1,18 @@
+import { getAdminPanelData } from "@/lib/server/admin-panel-data";
+import { DemoNotice, PanelMetric } from "./_components/PanelCards";
 import { PanelShell } from "./_components/PanelShell";
-import { DemoNotice, PanelMetric, PanelTable } from "./_components/PanelCards";
-export default function PanelPage(){return <PanelShell title="Resumen" subtitle="Una mirada rápida a la actividad de tu concesionaria."><DemoNotice/><section className="panel-metrics"><PanelMetric label="Leads nuevos" value="18" trend="+12% esta semana" accent="orange"/><PanelMetric label="Vehículos publicados" value="24" trend="3 destacados"/><PanelMetric label="Tasaciones pendientes" value="7" trend="2 nuevas hoy"/><PanelMetric label="Oferta activa" value="1" trend="Corolla XEI 2022"/></section><div className="panel-columns"><section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">ÚLTIMOS CONTACTOS</p><h2>Leads recientes</h2></div><a href="/panel/leads">Ver todos →</a></div><PanelTable headers={["Persona","Interés","Ingreso","Estado"]} rows={[["Martín González","Toyota Corolla","Hace 12 min","Nuevo"],["Sofía Martínez","Tasación","Hace 1 h","En seguimiento"],["Lucas Pérez","Ford Ranger","Ayer","Contactado"]]}/></section><section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">ACTIVIDAD</p><h2>Para revisar</h2></div></div><div className="panel-tasks"><div><span>◇</span><p><strong>7 tasaciones</strong><small>esperan una respuesta</small></p><a href="/panel/tasaciones">Abrir</a></div><div><span>▣</span><p><strong>3 vehículos</strong><small>sin fotos cargadas</small></p><a href="/panel/stock">Revisar</a></div><div><span>₿</span><p><strong>4 consultas</strong><small>de financiación</small></p><a href="/panel/financiacion">Abrir</a></div></div></section></div></PanelShell>}
+
+export default async function PanelPage() {
+  const { overview } = await getAdminPanelData();
+  const total = (values: Record<string, number>) => Object.values(values).reduce((sum, value) => sum + value, 0);
+  return <PanelShell title="Resumen" subtitle="Actividad calculada desde los registros operativos.">
+    <DemoNotice isDemo={overview.isDemo} />
+    <section className="panel-metrics">
+      <PanelMetric label="Leads nuevos" value={String(overview.leads.NEW)} trend={`${total(overview.leads)} totales`} accent="orange" />
+      <PanelMetric label="Vehículos disponibles" value={String(overview.stock.AVAILABLE)} trend={`${total(overview.stock)} en inventario`} />
+      <PanelMetric label="Tasaciones pendientes" value={String(overview.appraisals.SUBMITTED + overview.appraisals.IN_REVIEW)} trend={`${total(overview.appraisals)} solicitudes`} />
+      <PanelMetric label="Ofertas activas" value={String(overview.promotions.ACTIVE)} trend={`${overview.promotions.SCHEDULED} programadas`} />
+    </section>
+    <section className="panel-card"><p className="panel-kicker">CONTROL OPERATIVO</p><h2>Datos conectados y auditados</h2><p className="panel-muted">Cada alta y cambio de estado vuelve a verificar permisos, versión vigente y reglas del negocio.</p></section>
+  </PanelShell>;
+}

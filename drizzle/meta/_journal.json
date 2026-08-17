@@ -29,6 +29,13 @@
       "when": 1786930900000,
       "tag": "0003_confirm_jda_whatsapp",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786934491695,
+      "tag": "0004_furry_ultimatum",
+      "breakpoints": true
     }
   ]
 }

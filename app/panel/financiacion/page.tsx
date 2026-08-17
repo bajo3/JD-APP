@@ -1,2 +1,20 @@
-import { PanelShell } from "../_components/PanelShell";import { DemoNotice,PanelMetric,PanelTable } from "../_components/PanelCards";
-export default function FinancePage(){return <PanelShell title="Financiación" subtitle="Consultas para orientar a tus clientes sobre cuotas."><DemoNotice/><section className="panel-metrics"><PanelMetric label="Consultas este mes" value="34" trend="+9% vs. mes anterior" accent="orange"/><PanelMetric label="En seguimiento" value="11"/><PanelMetric label="Precalificadas" value="8"/><PanelMetric label="Monto consultado" value="$482M"/></section><section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">CONSULTAS DEMO</p><h2>Actividad reciente</h2></div></div><PanelTable headers={["Persona","Vehículo","Anticipo","Cuota estimada","Estado"]} rows={[["Nicolás Acosta","Toyota Corolla","$8.000.000","$650.000","Nuevo"],["María Suárez","T-Cross","$7.000.000","$580.000","En seguimiento"],["Diego Paz","Ford Ranger","$12.000.000","$890.000","Orientado"]]}/></section></PanelShell>}
+import { getAdminPanelData } from "@/lib/server/admin-panel-data";
+import { AdminResourceForm } from "../_components/AdminResourceForm";
+import { AdminTable } from "../_components/AdminTable";
+import { DemoNotice } from "../_components/PanelCards";
+import { PanelShell } from "../_components/PanelShell";
+
+export default async function FinancePage() {
+  const { overview, financePlans } = await getAdminPanelData();
+  return <PanelShell title="Financiación" subtitle="Versiones auditadas de tarifarios y tramos.">
+    <DemoNotice isDemo={overview.isDemo} />
+    <AdminResourceForm resource="finance" />
+    <section className="panel-card">
+      <h2>Planes cargados</h2>
+      <AdminTable rows={financePlans} columns={[{key:"name",label:"Nombre"},{key:"provider",label:"Proveedor"},{key:"status",label:"Estado"},{key:"isDemo",label:"Demo"}]} actions={[
+        {label:"Publicar",endpoint:"/api/v1/admin/finance-plans",action:"publish",statuses:["DRAFT"]},
+        {label:"Retirar",endpoint:"/api/v1/admin/finance-plans",action:"retire",statuses:["PUBLISHED"]},
+      ]} />
+    </section>
+  </PanelShell>;
+}

@@ -1,2 +1,21 @@
-import { PanelShell } from "../_components/PanelShell";import { DemoNotice,PanelMetric,PanelTable } from "../_components/PanelCards";
-export default function PanelStockPage(){return <PanelShell title="Stock" subtitle="Administrá los vehículos visibles en tu catálogo."><DemoNotice/><section className="panel-metrics"><PanelMetric label="Publicados" value="24" trend="18 usados · 6 utilitarios" accent="orange"/><PanelMetric label="Borradores" value="3"/><PanelMetric label="Sin fotos" value="3"/><PanelMetric label="Vendidos este mes" value="5"/></section><section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">INVENTARIO DEMO</p><h2>Vehículos publicados</h2></div><button className="panel-action panel-primary">+ Agregar vehículo</button></div><PanelTable headers={["Vehículo","Año","Precio","Visibilidad","Estado"]} rows={[["Toyota Corolla XEI","2022","$25.500.000","Destacado","Publicado"],["Volkswagen T-Cross","2021","$22.900.000","Catálogo","Publicado"],["Ford Ranger XLS","2020","$31.800.000","Catálogo","Sin fotos"],["Fiat Cronos Drive","2022","$18.700.000","Catálogo","Publicado"]]}/></section></PanelShell>}
+import { getAdminPanelData } from "@/lib/server/admin-panel-data";
+import { AdminResourceForm } from "../_components/AdminResourceForm";
+import { AdminTable } from "../_components/AdminTable";
+import { DemoNotice } from "../_components/PanelCards";
+import { PanelShell } from "../_components/PanelShell";
+
+export default async function PanelStockPage() {
+  const { overview, vehicles } = await getAdminPanelData();
+  return <PanelShell title="Stock" subtitle="Disponibilidad, publicación y precios vigentes.">
+    <DemoNotice isDemo={overview.isDemo} />
+    <AdminResourceForm resource="vehicle" />
+    <section className="panel-card">
+      <h2>Vehículos</h2>
+      <AdminTable rows={vehicles} columns={[{key:"name",label:"Vehículo"},{key:"year",label:"Año"},{key:"price",label:"Precio"},{key:"status",label:"Estado"}]} actions={[
+        {label:"Publicar",endpoint:"/api/v1/admin/vehicles",nextStatus:"AVAILABLE",statuses:["DRAFT"]},
+        {label:"Pausar",endpoint:"/api/v1/admin/vehicles",nextStatus:"PAUSED",statuses:["AVAILABLE"]},
+        {label:"Archivar",endpoint:"/api/v1/admin/vehicles",action:"archive",statuses:["DRAFT","AVAILABLE","RESERVED","SOLD","PAUSED"]},
+      ]} />
+    </section>
+  </PanelShell>;
+}

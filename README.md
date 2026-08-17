@@ -3,14 +3,16 @@
 Web/PWA mobile-first para Jesús Díaz Automotores (Tandil), construida sobre
 Next App Router + vinext/Sites. Incluye catálogo demo, ficha de vehículos,
 tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del Día,
-contacto/WhatsApp y un panel interno con métricas y tablas demo.
+contacto/WhatsApp y un panel operativo protegido para administrar la V1.
 
 ## Estado y advertencia
 
 La aplicación contiene datos demo y estados orientativos. No representa
 aprobación financiera, tasación definitiva, disponibilidad comercial ni
 condiciones vigentes hasta conectar y validar las fuentes reales del negocio.
-Las acciones del panel son visuales y no destructivas en esta versión.
+Los datos comerciales incluidos siguen marcados como DEMO. El panel permite
+mutaciones reales sobre D1, siempre con autorización, auditoría, idempotencia
+y control de versión; no realiza borrados físicos.
 
 ## Requisitos y comandos
 
@@ -57,19 +59,23 @@ login propio en las vistas.
 
 ## Panel interno
 
-- `/panel` — resumen y métricas demo.
-- `/panel/leads` — leads demo.
-- `/panel/stock` — inventario demo.
-- `/panel/tasaciones` — solicitudes demo.
-- `/panel/financiacion` — consultas demo.
-- `/panel/ofertas` — campañas demo.
+- `/panel` — resumen operativo calculado desde D1.
+- `/panel/leads` — pipeline y cambios de etapa.
+- `/panel/stock` — alta y ciclo de publicación del inventario.
+- `/panel/tasaciones` — revisión humana y aprobación de rangos.
+- `/panel/financiacion` — versiones, tramos y publicación de tarifarios.
+- `/panel/ofertas` — creación, programación y ciclo de promociones.
+
+Las rutas protegidas viven en `/api/v1/admin/**`. Las altas usan
+`Idempotency-Key`, las ediciones usan `expectedVersion` y cada mutación deja
+un registro de auditoría atribuido al usuario interno.
 
 ## Estructura relevante
 
 ```text
 app/                 # páginas, API routes, estados y componentes UI
 app/_components/     # header/footer, formularios, cards y countdown
-app/panel/            # panel interno y vistas demo
+app/panel/            # panel operativo protegido
 db/                  # schema/fixtures de persistencia
 lib/                 # dominio, casos de uso y acceso a datos
 public/              # favicon y assets públicos

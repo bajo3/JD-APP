@@ -1,2 +1,21 @@
-import { PanelShell } from "../_components/PanelShell";import { DemoNotice,PanelMetric,PanelTable } from "../_components/PanelCards";
-export default function ValuationsPage(){return <PanelShell title="Tasaciones" subtitle="Solicitudes de personas que quieren vender su vehículo."><DemoNotice/><section className="panel-metrics"><PanelMetric label="Pendientes" value="7" trend="2 recibidas hoy" accent="orange"/><PanelMetric label="En revisión" value="4"/><PanelMetric label="Respondidas" value="22"/><PanelMetric label="Promedio de respuesta" value="3 h"/></section><section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">SOLICITUDES DEMO</p><h2>Últimas tasaciones</h2></div><button className="panel-action">Filtrar ▾</button></div><PanelTable headers={["Persona","Vehículo","Kilómetros","Recibida","Estado"]} rows={[["Sofía Martínez","Honda Fit 2018","82.000 km","Hoy, 10:14","Pendiente"],["Pablo Ríos","VW Gol Trend 2015","120.000 km","Hoy, 08:42","Pendiente"],["Ana López","Ford EcoSport 2019","64.000 km","Ayer","En revisión"]]}/></section></PanelShell>}
+import { getAdminPanelData } from "@/lib/server/admin-panel-data";
+import { AdminResourceForm } from "../_components/AdminResourceForm";
+import { AdminTable } from "../_components/AdminTable";
+import { DemoNotice } from "../_components/PanelCards";
+import { PanelShell } from "../_components/PanelShell";
+
+export default async function ValuationsPage() {
+  const { overview, appraisals } = await getAdminPanelData();
+  const records = appraisals.map((item) => ({id:item.id,label:item.vehicle,status:item.status,version:item.version}));
+  return <PanelShell title="Tasaciones" subtitle="Revisión humana, rango, certeza y vigencia.">
+    <DemoNotice isDemo={overview.isDemo} />
+    <AdminResourceForm resource="appraisal" records={records} />
+    <section className="panel-card">
+      <h2>Solicitudes</h2>
+      <AdminTable rows={appraisals} columns={[{key:"name",label:"Lead"},{key:"vehicle",label:"Vehículo"},{key:"createdAt",label:"Recibida"},{key:"status",label:"Estado"}]} actions={[
+        {label:"Iniciar revisión",endpoint:"/api/v1/admin/appraisals",nextStatus:"IN_REVIEW",statuses:["SUBMITTED"]},
+        {label:"Aprobar",endpoint:"/api/v1/admin/appraisals",nextStatus:"APPROVED",statuses:["ESTIMATED"]},
+      ]} />
+    </section>
+  </PanelShell>;
+}

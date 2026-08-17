@@ -271,12 +271,14 @@ export const financePlanVersions = sqliteTable(
     validFrom: text("valid_from").notNull(),
     validUntil: text("valid_until").notNull(),
     publishedAt: text("published_at"),
+    lockVersion: integer("lock_version").notNull().default(1),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
     uniqueIndex("uq_finance_plan_version").on(table.version),
     index("idx_finance_plan_status_window").on(table.status, table.validFrom, table.validUntil),
+    index("idx_finance_plan_status_updated").on(table.status, table.updatedAt),
   ],
 );
 
@@ -336,6 +338,7 @@ export const promotions = sqliteTable(
     uniqueIndex("uq_promotion_slug").on(table.slug),
     uniqueIndex("uq_promotion_public_code").on(table.publicCode),
     index("idx_promotion_status_window").on(table.status, table.startsAt, table.endsAt),
+    index("idx_promotion_status_updated").on(table.status, table.updatedAt),
   ],
 );
 
@@ -459,6 +462,48 @@ export const consents = sqliteTable(
   (table) => [index("idx_consent_lead_purpose").on(table.leadId, table.purpose)],
 );
 
+export const adminIdempotency = sqliteTable(
+  "admin_idempotency",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    actorUserId: text("actor_user_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_admin_idempotency_scope_key").on(table.scope, table.idempotencyKey),
+    index("idx_admin_idempotency_resource").on(table.resourceType, table.resourceId),
+  ],
+);
+
+export const adminAuditLogs = sqliteTable(
+  "admin_audit_log",
+  {
+    id: text("id").primaryKey(),
+    actorUserId: text("actor_user_id").notNull(),
+    actorEmail: text("actor_email").notNull(),
+    action: text("action").notNull(),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    previousVersion: integer("previous_version"),
+    nextVersion: integer("next_version"),
+    summaryJson: text("summary_json").notNull().default("{}"),
+    occurredAt: text("occurred_at").notNull(),
+  },
+  (table) => [
+    index("idx_admin_audit_resource_occurred").on(
+      table.resourceType,
+      table.resourceId,
+      table.occurredAt,
+    ),
+    index("idx_admin_audit_actor_occurred").on(table.actorUserId, table.occurredAt),
+  ],
+);
+
 export type BusinessProfileRow = typeof businessProfiles.$inferSelect;
 export type VehicleRow = typeof vehicles.$inferSelect;
 export type VehicleMediaRow = typeof vehicleMedia.$inferSelect;
@@ -468,3 +513,4 @@ export type SimulationRow = typeof simulations.$inferSelect;
 export type PromotionRow = typeof promotions.$inferSelect;
 export type FinancePlanVersionRow = typeof financePlanVersions.$inferSelect;
 export type FinancePlanTierRow = typeof financePlanTiers.$inferSelect;
+export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;

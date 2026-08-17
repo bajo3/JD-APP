@@ -1,2 +1,21 @@
-import { PanelShell } from "../_components/PanelShell";import { DemoNotice,PanelMetric,PanelTable } from "../_components/PanelCards";
-export default function LeadsPage(){return <PanelShell title="Leads" subtitle="Consultas que llegan desde el sitio público."><DemoNotice/><section className="panel-metrics"><PanelMetric label="Total este mes" value="86" trend="+18% vs. mes anterior" accent="orange"/><PanelMetric label="Nuevos" value="18" trend="Requieren contacto"/><PanelMetric label="En seguimiento" value="31"/><PanelMetric label="Convertidos" value="12"/></section><section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">BANDEJA DE ENTRADA</p><h2>Todos los leads demo</h2></div><button className="panel-action">Exportar CSV</button></div><PanelTable headers={["Persona","Teléfono","Interés","Origen","Estado"]} rows={[["Martín González","249 411-2200","Toyota Corolla","WhatsApp","Nuevo"],["Sofía Martínez","249 455-9012","Tasación","Formulario","En seguimiento"],["Lucas Pérez","249 488-1122","Ford Ranger","Stock","Contactado"],["Carla Díaz","249 400-8721","Financiación","WhatsApp","Nuevo"]]}/></section></PanelShell>}
+import { getAdminPanelData } from "@/lib/server/admin-panel-data";
+import { AdminResourceForm } from "../_components/AdminResourceForm";
+import { AdminTable } from "../_components/AdminTable";
+import { DemoNotice } from "../_components/PanelCards";
+import { PanelShell } from "../_components/PanelShell";
+
+export default async function LeadsPage() {
+  const { overview, leads } = await getAdminPanelData();
+  const records = leads.map((lead) => ({id:lead.id,label:lead.name,status:lead.status,version:lead.version}));
+  return <PanelShell title="Leads" subtitle="Consultas recibidas y seguimiento comercial.">
+    <DemoNotice isDemo={overview.isDemo} />
+    <AdminResourceForm resource="lead" records={records} />
+    <section className="panel-card">
+      <h2>Registro operativo</h2>
+      <AdminTable rows={leads} columns={[{key:"name",label:"Persona"},{key:"interest",label:"Interés"},{key:"createdAt",label:"Ingreso"},{key:"status",label:"Estado"}]} actions={[
+        {label:"Marcar contactado",endpoint:"/api/v1/admin/leads",nextStatus:"CONTACTED",statuses:["NEW"]},
+        {label:"Calificar",endpoint:"/api/v1/admin/leads",nextStatus:"QUALIFIED",statuses:["CONTACTED"]},
+      ]} />
+    </section>
+  </PanelShell>;
+}
