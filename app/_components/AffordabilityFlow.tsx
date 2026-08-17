@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
+import type { FinderVehicleContext } from "@/lib/server/finder-context";
 
 type MoneyDto = { currency: "ARS"; minorUnits: number };
 type ReasonDetail = { code: string; message: string };
@@ -81,9 +83,11 @@ class ApiRequestError extends Error {
 export function AffordabilityFlow({
   contactPhone,
   demo = false,
+  initialVehicle = null,
 }: {
   contactPhone: string;
   demo?: boolean;
+  initialVehicle?: FinderVehicleContext | null;
 }) {
   const [step, setStep] = useState<FlowStep>("criteria");
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -213,6 +217,8 @@ export function AffordabilityFlow({
             contactConsent: true,
             privacyPolicyVersion: "v1",
             source: "AFFORDABILITY_WEB",
+            simulationCode: simulation.code,
+            vehicleSlug: selected.vehicle.slug,
           },
           keyFor(actionKeys.current, "lead"),
         );
@@ -262,6 +268,16 @@ export function AffordabilityFlow({
     delete actionKeys.current.search;
   }
 
+  const displayedResults = searchData
+    ? prioritizeContextualResult(searchData.results, initialVehicle)
+    : [];
+  const contextualResult = initialVehicle && searchData
+    ? searchData.results.find((result) => isContextualResult(result, initialVehicle)) ?? null
+    : null;
+  const contextualResultEligible = contextualResult
+    ? ELIGIBLE_STATUSES.has(contextualResult.status)
+    : false;
+
   return (
     <section className="affordability-flow" aria-labelledby="affordability-flow-title">
       <div className="affordability-steps" aria-label="Progreso">
@@ -269,6 +285,14 @@ export function AffordabilityFlow({
         <span className={step === "results" || step === "stale" ? "active" : selected ? "done" : ""}>02 Opciones</span>
         <span className={step === "contact" ? "active" : lead ? "done" : ""}>03 Contacto</span>
       </div>
+
+      {initialVehicle && (step === "criteria" || step === "results") ? (
+        <aside className="finder-context" aria-label="Vehículo elegido para la simulación">
+          <span>ESTÁS CALCULANDO</span>
+          <strong>{initialVehicle.name}</strong>
+          <Link href="/que-auto-me-llevo">Quitar selección</Link>
+        </aside>
+      ) : null}
 
       {step === "criteria" ? (
         <form className="affordability-form" onSubmit={search}>
@@ -351,17 +375,33 @@ export function AffordabilityFlow({
             <button type="button" className="affordability-link" onClick={restart}>Cambiar datos</button>
           </div>
           <p className="affordability-note">Los resultados se ordenan por accesibilidad; ninguna opción implica aprobación financiera.</p>
+          {initialVehicle && contextualResult ? (
+            <p className={`finder-context-message ${contextualResultEligible ? "is-eligible" : "is-unavailable"}`} role="status">
+              {contextualResultEligible
+                ? `${initialVehicle.name} aparece primero porque es la unidad que elegiste.`
+                : `${initialVehicle.name} no entra con estos datos. Te mostramos alternativas sin cambiar tus condiciones.`}
+            </p>
+          ) : null}
+          {initialVehicle && !contextualResult ? (
+            <p className="finder-context-message is-unavailable" role="status">
+              La unidad que elegiste ya no aparece entre las opciones vigentes. Te mostramos alternativas disponibles.
+            </p>
+          ) : null}
           <div className="affordability-result-list">
-            {searchData.results.map((result) => {
+            {displayedResults.map((result) => {
               const eligible = ELIGIBLE_STATUSES.has(result.status);
+              const contextual = isContextualResult(result, initialVehicle);
               const stale =
                 Date.parse(result.evaluation.validUntil) <=
                 Date.parse(searchData.evaluatedAt);
               const breakdown = result.evaluation.breakdown;
               return (
-                <article className="affordability-result" key={result.vehicle.id}>
+                <article className={`affordability-result${contextual ? " is-contextual" : ""}`} key={result.vehicle.id}>
                   <div>
-                    <span className={`affordability-status status-${result.status}`}>{result.statusLabel}</span>
+                    <div className="affordability-result-badges">
+                      {contextual ? <span className="finder-context-badge">El que elegiste</span> : null}
+                      <span className={`affordability-status status-${result.status}`}>{result.statusLabel}</span>
+                    </div>
                     <h3>{result.vehicle.brand} {result.vehicle.model}</h3>
                     <p>{result.vehicle.year} · {result.vehicle.type.toUpperCase()}</p>
                   </div>
@@ -441,6 +481,27 @@ export function AffordabilityFlow({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function prioritizeContextualResult(
+  results: AffordabilityResult[],
+  initialVehicle: FinderVehicleContext | null,
+): AffordabilityResult[] {
+  if (!initialVehicle) return results;
+  const index = results.findIndex((result) => isContextualResult(result, initialVehicle));
+  if (index <= 0) return results;
+  return [results[index], ...results.slice(0, index), ...results.slice(index + 1)];
+}
+
+function isContextualResult(
+  result: AffordabilityResult,
+  initialVehicle: FinderVehicleContext | null,
+): boolean {
+  return Boolean(
+    initialVehicle &&
+    result.vehicle.id === initialVehicle.id &&
+    result.vehicle.slug === initialVehicle.slug,
   );
 }
 

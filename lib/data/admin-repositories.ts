@@ -5,9 +5,11 @@ import {
   appraisals,
   financePlanTiers,
   financePlanVersions,
+  leadInterests,
   leads,
   promotions,
   promotionVehicles,
+  simulations,
   vehicles,
   type AppraisalRow,
   type FinancePlanTierRow,
@@ -44,6 +46,13 @@ export type AdminOverview = Readonly<{
   appraisalsPending: number;
   financeDrafts: number;
   promotionsScheduled: number;
+}>;
+
+export type AdminLeadContextRow = LeadRow & Readonly<{
+  vehicleId: string | null;
+  vehicleSlug: string | null;
+  vehicleLabel: string | null;
+  simulationCode: string | null;
 }>;
 
 type CreateContext = {
@@ -230,15 +239,75 @@ export class D1AdminRepository {
     return this.updateVehicle({ ...input, patch: { status: "ARCHIVED" } });
   }
 
-  listLeads(status?: string): Promise<LeadRow[]> {
-    return status
-      ? this.db.select().from(leads).where(eq(leads.status, status)).orderBy(desc(leads.updatedAt))
-      : this.db.select().from(leads).orderBy(desc(leads.updatedAt));
+  async listLeads(status?: string): Promise<AdminLeadContextRow[]> {
+    const query = this.db
+      .select({
+        lead: leads,
+        vehicleId: vehicles.id,
+        vehicleSlug: vehicles.slug,
+        vehicleMake: vehicles.make,
+        vehicleModel: vehicles.model,
+        vehicleTrim: vehicles.trim,
+        vehicleYear: vehicles.year,
+        simulationCode: simulations.publicCode,
+      })
+      .from(leads)
+      .leftJoin(
+        leadInterests,
+        and(eq(leadInterests.leadId, leads.id), eq(leadInterests.kind, "SIMULATION")),
+      )
+      .leftJoin(simulations, eq(simulations.id, leadInterests.simulationId))
+      .leftJoin(vehicles, eq(vehicles.id, simulations.vehicleId))
+      .orderBy(desc(leads.updatedAt));
+    const rows = status ? await query.where(eq(leads.status, status)) : await query;
+    return rows.map((row) => ({
+      ...row.lead,
+      vehicleId: row.vehicleId,
+      vehicleSlug: row.vehicleSlug,
+      vehicleLabel: row.vehicleId
+        ? [row.vehicleMake, row.vehicleModel, row.vehicleTrim, row.vehicleYear]
+            .filter((value) => value !== null)
+            .join(" ")
+        : null,
+      simulationCode: row.simulationCode,
+    }));
   }
 
-  async findLeadById(id: string): Promise<LeadRow | null> {
-    const [row] = await this.db.select().from(leads).where(eq(leads.id, id)).limit(1);
-    return row ?? null;
+  async findLeadById(id: string): Promise<AdminLeadContextRow | null> {
+    const rows = await this.db
+      .select({
+        lead: leads,
+        vehicleId: vehicles.id,
+        vehicleSlug: vehicles.slug,
+        vehicleMake: vehicles.make,
+        vehicleModel: vehicles.model,
+        vehicleTrim: vehicles.trim,
+        vehicleYear: vehicles.year,
+        simulationCode: simulations.publicCode,
+      })
+      .from(leads)
+      .leftJoin(
+        leadInterests,
+        and(eq(leadInterests.leadId, leads.id), eq(leadInterests.kind, "SIMULATION")),
+      )
+      .leftJoin(simulations, eq(simulations.id, leadInterests.simulationId))
+      .leftJoin(vehicles, eq(vehicles.id, simulations.vehicleId))
+      .where(eq(leads.id, id))
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          ...row.lead,
+          vehicleId: row.vehicleId,
+          vehicleSlug: row.vehicleSlug,
+          vehicleLabel: row.vehicleId
+            ? [row.vehicleMake, row.vehicleModel, row.vehicleTrim, row.vehicleYear]
+                .filter((value) => value !== null)
+                .join(" ")
+            : null,
+          simulationCode: row.simulationCode,
+        }
+      : null;
   }
 
   async transitionLead(

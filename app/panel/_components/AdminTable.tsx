@@ -1,10 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 type CellValue = string | number | boolean | null;
 type Row = Record<string, CellValue>;
+type Column = Readonly<{
+  key: string;
+  label: string;
+  linkBase?: string;
+}>;
 
 export type AdminRowAction = Readonly<{
   label: string;
@@ -22,7 +28,7 @@ export function AdminTable({
   actions = [],
 }: {
   rows: Row[];
-  columns: Array<{ key: string; label: string }>;
+  columns: Column[];
   actions?: readonly AdminRowAction[];
 }) {
   const router = useRouter();
@@ -90,7 +96,18 @@ export function AdminTable({
                 const rowActions = actions.filter((action) => !action.statuses || action.statuses.includes(String(row.status)));
                 return (
                   <tr key={String(row.id)}>
-                    {columns.map((column) => <td key={column.key}>{formatCell(row[column.key])}</td>)}
+                    {columns.map((column) => (
+                      <td key={column.key}>
+                        {column.linkBase ? (
+                          <Link
+                            className="admin-row-link"
+                            href={`${column.linkBase}${encodeURIComponent(String(row.id))}`}
+                          >
+                            {formatCell(row[column.key])}
+                          </Link>
+                        ) : formatCell(row[column.key])}
+                      </td>
+                    ))}
                     {actions.length ? (
                       <td className="admin-actions">
                         {rowActions.length ? rowActions.map((action) => {

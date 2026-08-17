@@ -1,12 +1,21 @@
 import { PublicShell } from "../_components/PublicShell";
 import { AffordabilityFlow } from "../_components/AffordabilityFlow";
 import { getDataAccess } from "@/lib/server/data-access";
+import { resolveFinderVehicleContext } from "@/lib/server/finder-context";
 
 export const dynamic = "force-dynamic";
 
-export default async function FinderPage() {
+type FinderPageProps = Readonly<{
+  searchParams: Promise<{ vehiculo?: string | string[] }>;
+}>;
+
+export default async function FinderPage({ searchParams }: FinderPageProps) {
   const access = getDataAccess();
-  const profile = await access.businessProfile.get();
+  const { vehiculo } = await searchParams;
+  const [profile, initialVehicle] = await Promise.all([
+    access.businessProfile.get(),
+    resolveFinderVehicleContext(vehiculo, access.stock),
+  ]);
   return (
     <PublicShell>
       <main className="public-page affordability-page">
@@ -19,6 +28,7 @@ export default async function FinderPage() {
         <AffordabilityFlow
           contactPhone={profile?.phoneNational ?? "249 458-7046"}
           demo={access.source === "fixture"}
+          initialVehicle={initialVehicle}
         />
       </main>
     </PublicShell>

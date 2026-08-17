@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { PublicShell } from "../../_components/PublicShell";
@@ -72,14 +73,22 @@ export default async function VehicleDetail({ params }: VehicleDetailProps) {
             <p>{vehicle.availabilityLabel}. {vehicle.updatedLabel}.</p>
             {data.demo ? <p className="detail-meta">Dato de demostración: no representa una publicación comercial real.</p> : null}
             <p>Coordiná una visita para confirmar la unidad, su documentación y las condiciones vigentes.</p>
-            <a
-              className="primary-button"
-              href={data.profile?.whatsappE164
-                ? `https://wa.me/${data.profile.whatsappE164.replace(/\D/g, "")}?text=${message}`
-                : "/contacto"}
-            >
-              {data.profile?.whatsappE164 ? "Consultar por WhatsApp" : "Dejar una consulta"} <span>↗</span>
-            </a>
+            <div className="detail-actions">
+              <Link
+                className="primary-button"
+                href={`/que-auto-me-llevo?vehiculo=${encodeURIComponent(vehicle.slug)}`}
+              >
+                Simular esta unidad <span>→</span>
+              </Link>
+              <a
+                className="context-secondary-link"
+                href={data.profile?.whatsappE164
+                  ? `https://wa.me/${data.profile.whatsappE164.replace(/\D/g, "")}?text=${message}`
+                  : "/contacto"}
+              >
+                {data.profile?.whatsappE164 ? "Consultar por WhatsApp" : "Dejar una consulta"} <span>↗</span>
+              </a>
+            </div>
           </div>
         </div>
       </main>

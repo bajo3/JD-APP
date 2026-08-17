@@ -161,6 +161,7 @@ export const leads = sqliteTable(
   {
     id: text("id").primaryKey(),
     idempotencyKey: text("idempotency_key"),
+    createRequestHash: text("create_request_hash"),
     name: text("name").notNull(),
     phoneNormalized: text("phone_normalized").notNull(),
     email: text("email"),
@@ -437,7 +438,15 @@ export const leadInterests = sqliteTable(
     contextJson: text("context_json").notNull().default("{}"),
     createdAt: createdAt(),
   },
-  (table) => [index("idx_lead_interest_lead_created").on(table.leadId, table.createdAt)],
+  (table) => [
+    uniqueIndex("uq_lead_interest_lead_kind_simulation").on(
+      table.leadId,
+      table.kind,
+      table.simulationId,
+    ),
+    uniqueIndex("uq_lead_interest_simulation").on(table.simulationId),
+    index("idx_lead_interest_lead_created").on(table.leadId, table.createdAt),
+  ],
 );
 
 export const leadEvents = sqliteTable(

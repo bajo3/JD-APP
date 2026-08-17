@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { OfferCountdown } from "../_components/OfferCountdown";
 import { PublicShell } from "../_components/PublicShell";
 import { getPublicOfferData } from "@/lib/server/public-data";
@@ -46,12 +47,22 @@ export default async function OfferPage() {
               <p className="detail-meta">{offer.validityLabel}. Sujeta a disponibilidad y verificación de condiciones.</p>
               {data.demo ? <p className="detail-meta">Dato de demostración: esta promoción no constituye una oferta comercial real.</p> : null}
               <div className="offer-actions">
-                <a
-                  className="secondary-button"
-                  href={offerContactHref(data.profile?.whatsappE164, offer.vehicle?.name)}
-                >
-                  {data.profile?.whatsappE164 ? "Consultar ahora" : "Dejar una consulta"} <span>↗</span>
-                </a>
+                <div className="offer-action-links">
+                  {offer.vehicle ? (
+                    <Link
+                      className="primary-button"
+                      href={`/que-auto-me-llevo?vehiculo=${encodeURIComponent(offer.vehicle.slug)}`}
+                    >
+                      Calcular esta oferta con mi usado <span>→</span>
+                    </Link>
+                  ) : null}
+                  <a
+                    className={offer.vehicle ? "context-secondary-link" : "primary-button"}
+                    href={offerContactHref(data.profile?.whatsappE164, offer.vehicle?.name)}
+                  >
+                    {data.profile?.whatsappE164 ? "Consultar ahora" : "Dejar una consulta"} <span>↗</span>
+                  </a>
+                </div>
                 <OfferCountdown endsAt={offer.endsAt} />
               </div>
             </div>

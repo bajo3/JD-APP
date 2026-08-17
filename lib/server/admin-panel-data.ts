@@ -6,8 +6,11 @@ import {
   listFinanceVersions,
   getAdminOverview,
 } from "@/lib/admin";
+import { buildSellerLeadDetailDto } from "@/lib/crm/index.mjs";
+import { D1LeadContextReadRepository } from "@/lib/data/lead-context-read-repository";
 import { adminDependencies } from "./admin-adapter";
 import { requirePanelUser } from "./panel-auth";
+import { notFound } from "next/navigation";
 
 export type AdminLead = {
   id: string;
@@ -55,6 +58,93 @@ export type AdminFinancePlan = {
   isDemo: 0 | 1;
 };
 
+export type SellerLeadEvent = Readonly<{
+  id: string;
+  type: string;
+  occurredAt: string;
+  actorType: string;
+  metadata: Readonly<Record<string, unknown>>;
+}>;
+
+export type SellerLeadOperation = Readonly<{
+  simulationCode: string;
+  vehicle: Readonly<{
+    id: string;
+    slug: string;
+    label: string;
+    make: string;
+    model: string;
+    trim: string | null;
+    year: number;
+  }>;
+  status: string;
+  classification: string;
+  certaintyLevel: string;
+  amounts: Readonly<{
+    currency: string;
+    listedPriceCents: number;
+    effectivePriceCents: number;
+    appraisalAppliedCents: number;
+    tradeInBonusCents: number;
+    cashCents: number;
+    financePrincipalCents: number;
+    installmentCents: number | null;
+    totalCostCents: number | null;
+  }>;
+  termMonths: number | null;
+  createdAt: string;
+  expiresAt: string;
+  validity: "ACTIVE" | "EXPIRED";
+  disclaimer: string;
+}>;
+
+export type SellerLeadDetailDto = Readonly<{
+  schemaVersion: string;
+  id: string;
+  name: string;
+  phone: string;
+  source: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  operation: SellerLeadOperation | null;
+  events: readonly SellerLeadEvent[];
+  generatedAt: string;
+}>;
+
+const sellerLeadDetail = buildSellerLeadDetailDto as unknown as (input: {
+  lead: unknown;
+  simulation: unknown;
+  vehicle: unknown;
+  events: readonly unknown[];
+  now: Date;
+}) => SellerLeadDetailDto;
+
+type LeadDetailRuntime = Readonly<{
+  repository?: D1LeadContextReadRepository;
+  now?: Date;
+  authorize?: (returnTo: string) => Promise<unknown>;
+}>;
+
+export async function getAdminLeadDetailData(
+  id: string,
+  runtime: LeadDetailRuntime = {},
+): Promise<{ lead: SellerLeadDetailDto }> {
+  const safeId = id.trim();
+  if (!/^[A-Za-z0-9._:-]{3,200}$/.test(safeId)) notFound();
+  await (runtime.authorize ?? requirePanelUser)(`/panel/leads/${safeId}`);
+  const record = await (runtime.repository ?? new D1LeadContextReadRepository()).findById(safeId);
+  if (!record) notFound();
+  const lead = sellerLeadDetail({
+    lead: record.lead,
+    simulation: record.simulation,
+    vehicle: record.vehicle,
+    events: record.events,
+    now: runtime.now ?? new Date(),
+  });
+  return { lead };
+}
+
 const ars = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
@@ -81,7 +171,9 @@ export async function getAdminPanelData() {
     leads: leadRows.map((lead): AdminLead => ({
       id: lead.id,
       name: lead.name,
-      interest: lead.simulationCode ?? lead.vehicleId ?? "Consulta general",
+      interest: lead.simulationCode
+        ? `${lead.vehicleLabel ?? lead.vehicleId ?? "Unidad"} · ${lead.simulationCode}`
+        : "Consulta general",
       status: lead.status,
       createdAt: lead.createdAt,
       version: lead.version,

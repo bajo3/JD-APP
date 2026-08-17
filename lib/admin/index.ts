@@ -87,6 +87,8 @@ export interface AdminLeadRecord {
   lostReason: string | null;
   source: string;
   vehicleId: string | null;
+  vehicleSlug: string | null;
+  vehicleLabel: string | null;
   simulationCode: string | null;
   version: number;
   createdAt: string;

@@ -11,6 +11,7 @@ import type {
 } from "@/lib/admin";
 import {
   D1AdminRepository,
+  type AdminLeadContextRow,
   type AdminActor,
   type AdminAudit,
   type MutationResult as DataMutationResult,
@@ -54,7 +55,8 @@ function maskPhone(value: string): string {
   return `${"•".repeat(Math.min(8, value.length - 4))}${value.slice(-4)}`;
 }
 
-function leadRecord(row: LeadRow): AdminLeadRecord {
+function leadRecord(row: LeadRow | AdminLeadContextRow): AdminLeadRecord {
+  const contextual = "simulationCode" in row ? row : null;
   return {
     id: row.id,
     name: row.name,
@@ -63,8 +65,10 @@ function leadRecord(row: LeadRow): AdminLeadRecord {
     assignedTo: row.assignedTo,
     lostReason: row.lostReason,
     source: row.source,
-    vehicleId: null,
-    simulationCode: null,
+    vehicleId: contextual?.vehicleId ?? null,
+    vehicleSlug: contextual?.vehicleSlug ?? null,
+    vehicleLabel: contextual?.vehicleLabel ?? null,
+    simulationCode: contextual?.simulationCode ?? null,
     version: row.version,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

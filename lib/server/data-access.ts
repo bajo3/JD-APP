@@ -34,6 +34,11 @@ import {
   type StockRepository,
   type StockVehicle,
 } from "@/lib/data/repositories";
+import {
+  D1LeadConversionRepository,
+  type LeadConversionRepository,
+  type LinkedLeadContext,
+} from "@/lib/data/lead-conversion-repository";
 import { ApiError } from "./api";
 import { canUseDevelopmentFixtures, isMissingD1BindingError } from "./runtime-policy";
 
@@ -44,6 +49,7 @@ export interface DataAccess {
   stock: StockRepository;
   businessProfile: BusinessProfileRepository;
   leads: LeadRepository;
+  leadConversions: LeadConversionRepository;
   appraisals: AppraisalRepository;
   simulations: SimulationRepository;
   promotions: PromotionRepository;
@@ -106,6 +112,7 @@ function leadRow(input: typeof leads.$inferInsert): LeadRow {
   const now = nowIso();
   return {
     idempotencyKey: null,
+    createRequestHash: null,
     email: null,
     status: "NEW",
     score: 0,
@@ -195,6 +202,8 @@ class DevelopmentStore {
   readonly simulationRows = new Map<string, SimulationRow>();
   readonly consentIds = new Set<string>();
   readonly eventIds = new Set<string>();
+  readonly eventHashes = new Map<string, string>();
+  readonly linkedContexts = new Map<string, LinkedLeadContext>();
 
   constructor() {
     const appraisal = appraisalRow(createAppraisalFixture());
@@ -326,11 +335,118 @@ function developmentAccess(): DataAccess {
     },
   };
 
+  const leadConversions: LeadConversionRepository = {
+    async findLeadByIdempotencyKey(key) {
+      return findByIdempotency(developmentStore.leadRows.values(), key) ?? null;
+    },
+    async create(input) {
+      const existing = findByIdempotency(
+        developmentStore.leadRows.values(),
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.createRequestHash !== input.requestHash) {
+          return { ok: false, reason: "idempotency_conflict" };
+        }
+        if (input.context) {
+          const linked = developmentStore.linkedContexts.get(existing.id);
+          if (!linked || linked.simulationId !== input.context.simulationId) {
+            return { ok: false, reason: "context_mismatch" };
+          }
+        }
+        return { ok: true, lead: existing, replayed: true };
+      }
+      if (input.context) {
+        const simulation = developmentStore.simulationRows.get(input.context.simulationId);
+        const vehicle = developmentStore.vehicles.find(
+          (item) => item.id === input.context?.vehicleId,
+        );
+        if (!simulation || simulation.publicCode !== input.context.simulationCode) {
+          return { ok: false, reason: "simulation_not_found" };
+        }
+        if (
+          simulation.vehicleId !== input.context.vehicleId ||
+          vehicle?.slug !== input.context.vehicleSlug
+        ) {
+          return { ok: false, reason: "context_mismatch" };
+        }
+        if (simulation.leadId) {
+          return { ok: false, reason: "simulation_already_linked" };
+        }
+      }
+      const lead = leadRow({
+        id: input.leadId,
+        idempotencyKey: input.idempotencyKey,
+        createRequestHash: input.requestHash,
+        name: input.name,
+        phoneNormalized: input.phoneNormalized,
+        email: input.email,
+        source: input.source,
+        status: "NEW",
+        createdAt: input.occurredAt,
+        updatedAt: input.occurredAt,
+      });
+      developmentStore.leadRows.set(lead.id, lead);
+      developmentStore.consentIds.add(input.consentId);
+      if (input.context) {
+        const simulation = developmentStore.simulationRows.get(input.context.simulationId)!;
+        developmentStore.simulationRows.set(simulation.id, {
+          ...simulation,
+          leadId: lead.id,
+        });
+        const vehicle = developmentStore.vehicles.find(
+          (item) => item.id === input.context?.vehicleId,
+        )!;
+        developmentStore.linkedContexts.set(lead.id, Object.freeze({
+          leadId: lead.id,
+          simulationId: simulation.id,
+          simulationCode: simulation.publicCode,
+          simulationLeadId: lead.id,
+          vehicleId: vehicle.id,
+          vehicleSlug: vehicle.slug,
+          vehicleLabel: `${vehicle.make} ${vehicle.model} ${vehicle.trim}`,
+          vehicleYear: vehicle.year,
+          promotionId: simulation.promotionId,
+        }));
+      }
+      return { ok: true, lead, replayed: false };
+    },
+    async findLinkedContext(input) {
+      const linked = developmentStore.linkedContexts.get(input.leadId);
+      return linked &&
+        linked.simulationCode === input.simulationCode &&
+        linked.vehicleSlug === input.vehicleSlug
+        ? linked
+        : null;
+    },
+    async recordHandoff(input) {
+      const currentHash = developmentStore.eventHashes.get(input.eventId);
+      if (currentHash) {
+        return currentHash === input.requestHash
+          ? { ok: true, replayed: true }
+          : { ok: false, reason: "idempotency_conflict" };
+      }
+      const linked = developmentStore.linkedContexts.get(input.leadId);
+      if (
+        !linked || linked.simulationId !== input.simulationId ||
+        linked.simulationCode !== input.simulationCode ||
+        linked.vehicleId !== input.vehicleId ||
+        linked.vehicleSlug !== input.vehicleSlug
+      ) {
+        return { ok: false, reason: "context_not_linked" };
+      }
+      developmentStore.eventIds.add(input.eventId);
+      developmentStore.eventHashes.set(input.eventId, input.requestHash);
+      return { ok: true, replayed: false };
+    },
+  };
+
   return {
     source: "fixture",
     stock,
     businessProfile,
     leads: leadRepository,
+    leadConversions,
     appraisals: appraisalRepository,
     simulations: simulationRepository,
     promotions: promotionRepository,
@@ -352,6 +468,7 @@ export function getDataAccess(): DataAccess {
     return {
       source: "d1",
       ...repositories,
+      leadConversions: new D1LeadConversionRepository(),
       async recordConsent(input) {
         await db
           .insert(consents)

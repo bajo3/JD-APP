@@ -12,7 +12,7 @@ export default async function LeadsPage() {
     <AdminResourceForm resource="lead" records={records} />
     <section className="panel-card">
       <h2>Registro operativo</h2>
-      <AdminTable rows={leads} columns={[{key:"name",label:"Persona"},{key:"interest",label:"Interés"},{key:"createdAt",label:"Ingreso"},{key:"status",label:"Estado"}]} actions={[
+      <AdminTable rows={leads} columns={[{key:"name",label:"Persona",linkBase:"/panel/leads/"},{key:"interest",label:"Interés"},{key:"createdAt",label:"Ingreso"},{key:"status",label:"Estado"}]} actions={[
         {label:"Marcar contactado",endpoint:"/api/v1/admin/leads",nextStatus:"CONTACTED",statuses:["NEW"]},
         {label:"Calificar",endpoint:"/api/v1/admin/leads",nextStatus:"QUALIFIED",statuses:["CONTACTED"]},
       ]} />
