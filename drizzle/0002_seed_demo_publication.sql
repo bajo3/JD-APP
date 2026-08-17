@@ -5,7 +5,7 @@ INSERT INTO `business_profile` (
   `timezone`, `currency`, `locale`, `stock_freshness_minutes`
 ) VALUES (
   'business-jda', 'Jesús Díaz Automotores', 'Tandil', 'Piedrabuena esq. Rauch',
-  '2494587046', NULL, 'America/Argentina/Buenos_Aires', 'ARS', 'es-AR', 1440
+  '2494587046', '+5492494587046', 'America/Argentina/Buenos_Aires', 'ARS', 'es-AR', 1440
 ) ON CONFLICT(`id`) DO NOTHING;
 --> statement-breakpoint
 INSERT INTO `vehicle` (

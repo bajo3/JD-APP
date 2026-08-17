@@ -18,7 +18,7 @@ export const businessProfileFixture: typeof businessProfiles.$inferInsert = {
   city: "Tandil",
   address: "Piedrabuena esq. Rauch",
   phoneNational: "2494587046",
-  whatsappE164: null,
+  whatsappE164: "+5492494587046",
   timezone: "America/Argentina/Buenos_Aires",
   currency: "ARS",
   locale: "es-AR",

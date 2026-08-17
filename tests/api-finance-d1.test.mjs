@@ -32,6 +32,9 @@ test("incremental migration and demo D1 seed are valid and idempotent", () => {
   const dataMigration = migration("drizzle/0002_seed_demo_publication.sql");
   db.exec(dataMigration);
   db.exec(dataMigration);
+  const whatsappMigration = migration("drizzle/0003_confirm_jda_whatsapp.sql");
+  db.exec(whatsappMigration);
+  db.exec(whatsappMigration);
   const seed = buildDemoSeedSql(clock);
   db.exec(seed);
   db.exec(seed);
@@ -45,6 +48,10 @@ test("incremental migration and demo D1 seed are valid and idempotent", () => {
   assert.equal(
     db.prepare("SELECT count(*) AS count FROM finance_plan_tier WHERE finance_plan_version_id = 'finance-plan-demo-preview'").get().count,
     3,
+  );
+  assert.equal(
+    db.prepare("SELECT whatsapp_e164 FROM business_profile WHERE id = 'business-jda'").get().whatsapp_e164,
+    "+5492494587046",
   );
   assert.equal(db.prepare("PRAGMA foreign_key_check").all().length, 0);
   const plan = db
