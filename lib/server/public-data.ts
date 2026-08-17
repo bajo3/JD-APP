@@ -23,6 +23,12 @@ export type PublicVehicleView = Readonly<{
   updatedAt: string;
   updatedLabel: string;
   demo: boolean;
+  image: Readonly<{
+    url: string;
+    alt: string;
+    width: number;
+    height: number;
+  }> | null;
 }>;
 
 export type PublicPromotionView = Readonly<{
@@ -150,6 +156,7 @@ function publicVehicle(
     dto.availability === "AVAILABLE_TODAY"
       ? "AVAILABLE_TODAY"
       : "CHECK_AVAILABILITY";
+  const firstImage = dto.media.find((media) => Boolean(media.url));
   return {
     id: dto.id,
     slug: dto.slug,
@@ -168,6 +175,14 @@ function publicVehicle(
     updatedAt: dto.lastSyncedAt ?? dto.updatedAt,
     updatedLabel: formatUpdated(dto.lastSyncedAt ?? dto.updatedAt),
     demo,
+    image: firstImage?.url
+      ? {
+          url: firstImage.url,
+          alt: firstImage.alt || `${[dto.make, dto.model, dto.trim].filter(Boolean).join(" ")} ${dto.year}`,
+          width: firstImage.width ?? 1_200,
+          height: firstImage.height ?? 800,
+        }
+      : null,
   };
 }
 

@@ -204,7 +204,12 @@ async function attachMedia(db: Database, rows: VehicleRow[]): Promise<StockVehic
   const media = await db
     .select()
     .from(vehicleMedia)
-    .where(inArray(vehicleMedia.vehicleId, rows.map((row) => row.id)))
+    .where(
+      and(
+        inArray(vehicleMedia.vehicleId, rows.map((row) => row.id)),
+        eq(vehicleMedia.status, "READY"),
+      ),
+    )
     .orderBy(asc(vehicleMedia.sortOrder));
   const grouped = groupMedia(media);
   return rows.map((row) => ({ ...row, media: grouped.get(row.id) ?? [] }));

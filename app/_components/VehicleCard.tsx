@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export type Vehicle = {
   slug: string;
   type: string;
@@ -9,6 +11,7 @@ export type Vehicle = {
   availabilityLabel?: string;
   updatedLabel?: string;
   demo?: boolean;
+  image?: { url: string; alt: string; width: number; height: number } | null;
 };
 export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
   return (
@@ -16,7 +19,7 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
       <a href={`/autos/${vehicle.slug}`}>
         <div className={`vehicle-image ${vehicle.tone}`}>
           <span>{vehicle.type}</span>
-          <div className="small-car" aria-hidden="true"><i/><i/></div>
+          {vehicle.image ? <Image className="vehicle-real-image" src={vehicle.image.url} alt={vehicle.image.alt} width={vehicle.image.width} height={vehicle.image.height} unoptimized /> : <div className="small-car" aria-hidden="true"><i/><i/></div>}
         </div>
         <div className="vehicle-info">
           <p>{vehicle.year} · {vehicle.km}</p>

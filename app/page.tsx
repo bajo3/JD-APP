@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { OfferCountdown } from "./_components/OfferCountdown";
 import { VehicleCard } from "./_components/VehicleCard";
 import { getPublicHomeData } from "@/lib/server/public-data";
@@ -66,7 +67,18 @@ export default async function Home() {
       <section className="daily-offer">
         <div className="offer-photo">
           <span className="offer-badge">OFERTA JD<br/><b>DEL DÍA</b></span>
-          <div className="offer-car" aria-hidden="true"><span/><i/><i/></div>
+          {offer?.vehicle?.image ? (
+            <Image
+              className="offer-real-image"
+              src={offer.vehicle.image.url}
+              alt={offer.vehicle.image.alt}
+              width={offer.vehicle.image.width}
+              height={offer.vehicle.image.height}
+              unoptimized
+            />
+          ) : (
+            <div className="offer-car" aria-hidden="true"><span/><i/><i/></div>
+          )}
         </div>
         {offer ? (
           <div className="offer-content">

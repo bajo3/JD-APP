@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { OfferCountdown } from "../_components/OfferCountdown";
 import { PublicShell } from "../_components/PublicShell";
 import { getPublicOfferData } from "@/lib/server/public-data";
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
 export default async function OfferPage() {
   const data = await getPublicOfferData();
   const offer = data.promotion;
+  const offerImage = offer?.vehicle?.image;
 
   return (
     <PublicShell>
@@ -23,7 +25,7 @@ export default async function OfferPage() {
           <div className="offer-detail-card">
             <div className="offer-photo">
               <span className="offer-badge">OFERTA JD<br/><b>DEL DÍA</b></span>
-              <div className="offer-car" aria-hidden="true"><span/><i/><i/></div>
+              {offerImage ? <Image className="offer-real-image" src={offerImage.url} alt={offerImage.alt} width={offerImage.width} height={offerImage.height} unoptimized /> : <div className="offer-car" aria-hidden="true"><span/><i/><i/></div>}
             </div>
             <div className="offer-content">
               <h2>{offer.vehicle?.name ?? offer.title}</h2>

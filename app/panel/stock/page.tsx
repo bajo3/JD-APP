@@ -3,12 +3,14 @@ import { AdminResourceForm } from "../_components/AdminResourceForm";
 import { AdminTable } from "../_components/AdminTable";
 import { DemoNotice } from "../_components/PanelCards";
 import { PanelShell } from "../_components/PanelShell";
+import { VehicleMediaManager } from "../_components/VehicleMediaManager";
 
 export default async function PanelStockPage() {
   const { overview, vehicles } = await getAdminPanelData();
   return <PanelShell title="Stock" subtitle="Disponibilidad, publicación y precios vigentes.">
     <DemoNotice isDemo={overview.isDemo} />
     <AdminResourceForm resource="vehicle" />
+    <VehicleMediaManager vehicles={vehicles.map((vehicle) => ({ id: vehicle.id, name: vehicle.name, version: vehicle.version }))} />
     <section className="panel-card">
       <h2>Vehículos</h2>
       <AdminTable rows={vehicles} columns={[{key:"name",label:"Vehículo"},{key:"year",label:"Año"},{key:"price",label:"Precio"},{key:"status",label:"Estado"}]} actions={[

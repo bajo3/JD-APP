@@ -78,14 +78,26 @@ export const vehicleMedia = sqliteTable(
     publicUrl: text("public_url"),
     contentType: text("content_type").notNull(),
     altText: text("alt_text").notNull(),
+    byteSize: integer("byte_size").notNull().default(0),
+    sha256: text("sha256").notNull().default(""),
+    status: text("status").notNull().default("PENDING"),
     sortOrder: integer("sort_order").notNull().default(0),
     width: integer("width"),
     height: integer("height"),
+    version: integer("version").notNull().default(1),
+    uploadedBy: text("uploaded_by").notNull().default("legacy"),
     createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    archivedAt: text("archived_at"),
   },
   (table) => [
     uniqueIndex("uq_vehicle_media_r2_key").on(table.r2Key),
-    index("idx_vehicle_media_order").on(table.vehicleId, table.sortOrder),
+    uniqueIndex("uq_vehicle_media_vehicle_sha256").on(table.vehicleId, table.sha256),
+    index("idx_vehicle_media_status_order").on(
+      table.vehicleId,
+      table.status,
+      table.sortOrder,
+    ),
   ],
 );
 

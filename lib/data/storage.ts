@@ -9,18 +9,26 @@ const ALLOWED_APPRAISAL_IMAGE_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const ALLOWED_STOCK_IMAGE_TYPES = new Set([
+  "image/avif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 export interface ObjectStore {
   putStockImage(input: {
     vehicleId: string;
     mediaId: string;
-    body: ReadableStream | ArrayBuffer;
+    body: ReadableStream | ArrayBuffer | ArrayBufferView;
     contentType: string;
+    byteSize: number;
+    sha256: string;
   }): Promise<string>;
   putPrivateAppraisalImage(input: {
     appraisalId: string;
     mediaId: string;
-    body: ReadableStream | ArrayBuffer;
+    body: ReadableStream | ArrayBuffer | ArrayBufferView;
     contentType: string;
     byteSize: number;
     sha256: string;
@@ -36,14 +44,21 @@ export class R2ObjectStore implements ObjectStore {
     mediaId: string;
     body: ReadableStream | ArrayBuffer;
     contentType: string;
+    byteSize: number;
+    sha256: string;
   }): Promise<string> {
-    if (!ALLOWED_APPRAISAL_IMAGE_TYPES.has(input.contentType)) {
+    if (!ALLOWED_STOCK_IMAGE_TYPES.has(input.contentType)) {
       throw new Error("UNSUPPORTED_STOCK_IMAGE_TYPE");
     }
     const key = `public/stock/${input.vehicleId}/${input.mediaId}`;
     await getUploadsBucket().put(key, input.body, {
       httpMetadata: { contentType: input.contentType },
-      customMetadata: { vehicleId: input.vehicleId, visibility: "public" },
+      customMetadata: {
+        vehicleId: input.vehicleId,
+        byteSize: String(input.byteSize),
+        sha256: input.sha256,
+        visibility: "public",
+      },
     });
     return key;
   }
