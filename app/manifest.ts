@@ -1,0 +1,2 @@
+import type { MetadataRoute } from "next";
+export default function manifest(): MetadataRoute.Manifest { return { name:"Jesús Díaz Automotores", short_name:"JD Automotores", description:"Usados seleccionados y atención personalizada en Tandil.", start_url:"/", display:"standalone", background_color:"#fbfaf7", theme_color:"#18201f", lang:"es-AR", icons:[{src:"/favicon.svg",sizes:"any",type:"image/svg+xml",purpose:"any"}]}; }

@@ -1,0 +1,3 @@
+import { PublicShell } from "../_components/PublicShell";
+import { LeadForm } from "../_components/LeadForm";
+export default function ContactPage(){return <PublicShell><main className="public-page contact-page"><div className="form-intro"><p className="eyebrow">ESTAMOS PARA AYUDARTE</p><h1>Hablemos de tu próximo auto</h1><p>Escribinos y coordinamos una visita en nuestro salón de Tandil.</p><div className="contact-data"><span>⌖</span><div><strong>Piedrabuena esq. Rauch</strong><small>Tandil, Buenos Aires</small></div><span>◷</span><div><strong>Coordiná tu visita</strong><small>por WhatsApp</small></div></div></div><LeadForm/></main></PublicShell>}

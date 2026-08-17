@@ -1,0 +1,1 @@
+export default function Loading(){return <main className="loading-page" aria-label="Cargando"><div className="loading-mark">JD</div><div className="loading-line loading-wide"/><div className="loading-line"/><div className="loading-grid"><span/><span/><span/></div></main>}

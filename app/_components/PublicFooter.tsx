@@ -1,0 +1,1 @@
+export function PublicFooter(){return <footer id="contacto"><div><span className="brand-mark">JD</span><strong>JESÚS DÍAZ AUTOMOTORES</strong></div><p>Estamos para ayudarte a encontrar tu próximo auto.</p><a href="https://wa.me/5492494587046">WhatsApp · 249 458-7046</a><span>Piedrabuena esq. Rauch · Tandil</span></footer>}
