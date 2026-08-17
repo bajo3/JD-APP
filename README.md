@@ -83,4 +83,7 @@ public/              # favicon y assets públicos
 ```
 
 La API versionada vive bajo `/api/v1` y está diseñada para ser reutilizable
-por una futura app Expo/React Native. No se implementa service worker todavía.
+por una futura app Expo/React Native. La búsqueda de accesibilidad devuelve una
+huella determinista por opción; al crear la simulación el servidor recalcula
+stock, precio, tasación, promoción y tarifario, y rechaza la operación si cambió
+alguna condición. No se implementa service worker todavía.

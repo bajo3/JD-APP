@@ -54,7 +54,97 @@ export interface AppraisalRepository {
 
 export interface SimulationRepository {
   findByPublicCode(publicCode: string): Promise<SimulationRow | null>;
+  findByIdempotencyKey(idempotencyKey: string): Promise<SimulationRow | null>;
   create(input: typeof simulations.$inferInsert): Promise<SimulationRow>;
+}
+
+export type SimulationReplaySelection = Readonly<{
+  vehicleId: string | null;
+  appraisalId: string | null;
+  leadId: string | null;
+}>;
+
+export type SimulationReplayFingerprint = Readonly<{
+  selection: SimulationReplaySelection;
+  canonicalInput: unknown;
+}>;
+
+export class SimulationReplayConflict extends Error {
+  readonly code = "OPERATION_CHANGED";
+
+  constructor() {
+    super("La clave de idempotencia ya fue usada para otra selección u operación.");
+    this.name = "SimulationReplayConflict";
+  }
+}
+
+export function simulationReplayFingerprint(
+  row: Pick<
+    SimulationRow,
+    "vehicleId" | "appraisalId" | "leadId" | "inputSnapshotJson"
+  >,
+): SimulationReplayFingerprint {
+  return Object.freeze({
+    selection: Object.freeze({
+      vehicleId: row.vehicleId,
+      appraisalId: row.appraisalId,
+      leadId: row.leadId,
+    }),
+    canonicalInput: canonicalSimulationInput(row.inputSnapshotJson),
+  });
+}
+
+export function assertSimulationReplay(
+  existing: SimulationRow,
+  expected: SimulationReplayFingerprint,
+): SimulationRow {
+  const stored = simulationReplayFingerprint(existing);
+  if (
+    stored.selection.vehicleId !== expected.selection.vehicleId ||
+    stored.selection.appraisalId !== expected.selection.appraisalId ||
+    stored.selection.leadId !== expected.selection.leadId ||
+    stableJson(stored.canonicalInput) !==
+      stableJson(canonicalSimulationInput(expected.canonicalInput))
+  ) {
+    throw new SimulationReplayConflict();
+  }
+  return existing;
+}
+
+export function canonicalSimulationInput(snapshot: string | unknown): unknown {
+  let value: unknown = snapshot;
+  if (typeof snapshot === "string") {
+    try {
+      value = JSON.parse(snapshot) as unknown;
+    } catch {
+      throw new Error("SIMULATION_INPUT_SNAPSHOT_INVALID");
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("SIMULATION_INPUT_SNAPSHOT_INVALID");
+  }
+  return sortJson(
+    Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).filter(
+        ([key]) => key !== "at" && key !== "evaluatedAt",
+      ),
+    ),
+  );
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([key, item]) => [key, sortJson(item)]),
+  );
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(sortJson(value));
 }
 
 export interface PromotionRepository {
@@ -248,16 +338,44 @@ export class D1SimulationRepository implements SimulationRepository {
     return row ?? null;
   }
 
+  async findByIdempotencyKey(idempotencyKey: string): Promise<SimulationRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(simulations)
+      .where(eq(simulations.idempotencyKey, idempotencyKey))
+      .limit(1);
+    return row ?? null;
+  }
+
   async create(input: typeof simulations.$inferInsert): Promise<SimulationRow> {
+    if (input.idempotencyKey) {
+      const existing = await this.findByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        return assertSimulationReplay(existing, {
+          selection: {
+            vehicleId: input.vehicleId ?? null,
+            appraisalId: input.appraisalId ?? null,
+            leadId: input.leadId ?? null,
+          },
+          canonicalInput: canonicalSimulationInput(input.inputSnapshotJson),
+        });
+      }
+    }
     await this.db.insert(simulations).values(input).onConflictDoNothing();
     const [row] = input.idempotencyKey
-      ? await this.db
-          .select()
-          .from(simulations)
-          .where(eq(simulations.idempotencyKey, input.idempotencyKey))
-          .limit(1)
+      ? [await this.findByIdempotencyKey(input.idempotencyKey)]
       : await this.db.select().from(simulations).where(eq(simulations.id, input.id)).limit(1);
     if (!row) throw new Error("SIMULATION_CREATE_FAILED");
+    if (input.idempotencyKey && row.id !== input.id) {
+      return assertSimulationReplay(row, {
+        selection: {
+          vehicleId: input.vehicleId ?? null,
+          appraisalId: input.appraisalId ?? null,
+          leadId: input.leadId ?? null,
+        },
+        canonicalInput: canonicalSimulationInput(input.inputSnapshotJson),
+      });
+    }
     return row;
   }
 }

@@ -16,7 +16,9 @@ test("dedicated affordability flow follows the conversion contract in order", as
   assert.ok(affordability >= 0 && affordability < simulation);
   assert.ok(simulation < lead && lead < handoff);
   assert.match(source, /vehicleId: result\.vehicle\.id/);
-  assert.match(source, /affordabilitySnapshot/);
+  assert.match(source, /selectionVersion: result\.selectionVersion/);
+  assert.match(source, /simulationInput: searchData\.simulationInput/);
+  assert.doesNotMatch(source, /affordabilitySnapshot/);
   assert.match(source, /simulationCode: simulation\.code/);
   assert.match(source, /leadId: currentLead\.id/);
 });
@@ -31,6 +33,7 @@ test("each retryable action has a stable scoped idempotency key", async () => {
   assert.match(source, /keyFor\(actionKeys\.current, "lead"\)/);
   assert.match(source, /keyFor\(actionKeys\.current, "handoff"\)/);
   assert.match(source, /"Idempotency-Key": idempotencyKey/);
+  assert.match(source, /OPERATION_CHANGED/);
 });
 
 test("WhatsApp fallback preserves the operation code and contact phone", async () => {

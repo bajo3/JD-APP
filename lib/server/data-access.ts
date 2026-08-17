@@ -21,6 +21,8 @@ import {
   stockFixtures,
 } from "@/lib/data/fixtures";
 import {
+  assertSimulationReplay,
+  canonicalSimulationInput,
   createRepositories,
   type AppraisalRepository,
   type BusinessProfileRepository,
@@ -289,12 +291,29 @@ function developmentAccess(): DataAccess {
         ) ?? null
       );
     },
+    async findByIdempotencyKey(idempotencyKey) {
+      return (
+        findByIdempotency(
+          developmentStore.simulationRows.values(),
+          idempotencyKey,
+        ) ?? null
+      );
+    },
     async create(input) {
       const replay = findByIdempotency(
         developmentStore.simulationRows.values(),
         input.idempotencyKey,
       );
-      if (replay) return replay;
+      if (replay) {
+        return assertSimulationReplay(replay, {
+          selection: {
+            vehicleId: input.vehicleId ?? null,
+            appraisalId: input.appraisalId ?? null,
+            leadId: input.leadId ?? null,
+          },
+          canonicalInput: canonicalSimulationInput(input.inputSnapshotJson),
+        });
+      }
       const row = simulationRow(input);
       developmentStore.simulationRows.set(row.id, row);
       return row;

@@ -32,12 +32,14 @@ type AffordabilityResult = {
   status: string;
   statusLabel: string;
   reasonDetails: ReasonDetail[];
+  selectionVersion: string;
   evaluation: Evaluation;
 };
 type AffordabilityData = {
   evaluatedAt: string;
   rulesetVersion: string;
   disclaimers: string[];
+  simulationInput: ApiRecord;
   results: AffordabilityResult[];
 };
 type SimulationData = {
@@ -147,8 +149,11 @@ export function AffordabilityFlow({
   async function chooseResult(result: AffordabilityResult) {
     setError("");
     if (!ELIGIBLE_STATUSES.has(result.status)) return;
+    if (!searchData) {
+      setError("La búsqueda ya no está disponible. Volvé a calcular la operación.");
+      return;
+    }
     if (
-      searchData &&
       Date.parse(result.evaluation.validUntil) <= Date.parse(searchData.evaluatedAt)
     ) {
       setSelected(result);
@@ -162,16 +167,8 @@ export function AffordabilityFlow({
         {
           vehicleId: result.vehicle.id,
           vehicleSlug: result.vehicle.slug,
-          cashCents: criteria.cashCents,
-          maxInstallmentCents: criteria.monthlyCents,
-          acceptedTerms: terms,
-          appraisal: criteria.appraisal,
-          affordabilitySnapshot: {
-            evaluatedAt: searchData?.evaluatedAt,
-            rulesetVersion: searchData?.rulesetVersion,
-            vehicleId: result.vehicle.id,
-            evaluation: result.evaluation,
-          },
+          selectionVersion: result.selectionVersion,
+          simulationInput: searchData.simulationInput,
         },
         keyFor(actionKeys.current, `simulation:${result.vehicle.id}`),
       );
@@ -181,7 +178,7 @@ export function AffordabilityFlow({
     } catch (caught) {
       if (
         caught instanceof ApiRequestError &&
-        ["VEHICLE_PRICE_EXPIRED", "VEHICLE_NOT_FOUND"].includes(caught.code)
+        ["OPERATION_CHANGED", "VEHICLE_PRICE_EXPIRED", "VEHICLE_NOT_FOUND"].includes(caught.code)
       ) {
         setSelected(result);
         setStep("stale");

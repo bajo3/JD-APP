@@ -44,6 +44,22 @@ export async function applicationDependencies(access: DataAccess, now: Date) {
 
 export function rethrowApplicationError(error: unknown): never {
   if (error instanceof ApplicationContractError) {
+    if (error.code === "operation_changed") {
+      throw new ApiError(
+        409,
+        "OPERATION_CHANGED",
+        "Las condiciones de la operación cambiaron. Volvé a calcular antes de continuar.",
+        { ...(error.field ? { [error.field]: error.code } : {}) },
+      );
+    }
+    if (error.code === "selection_not_eligible") {
+      throw new ApiError(
+        409,
+        "SELECTION_NOT_ELIGIBLE",
+        "La selección ya no está disponible para simular. Volvé a calcular la operación.",
+        { ...(error.field ? { [error.field]: error.code } : {}) },
+      );
+    }
     throw new ApiError(422, "INVALID_OPERATION_INPUT", error.message, {
       ...(error.field ? { [error.field]: error.code } : {}),
     });
