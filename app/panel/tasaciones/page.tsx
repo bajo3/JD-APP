@@ -12,7 +12,7 @@ export default async function ValuationsPage() {
     <AdminResourceForm resource="appraisal" records={records} />
     <section className="panel-card">
       <h2>Solicitudes</h2>
-      <AdminTable rows={appraisals} columns={[{key:"name",label:"Lead"},{key:"vehicle",label:"Vehículo"},{key:"createdAt",label:"Recibida"},{key:"status",label:"Estado"}]} actions={[
+      <AdminTable rows={appraisals} columns={[{key:"name",label:"Lead"},{key:"vehicle",label:"Vehículo",linkBase:"/panel/tasaciones/"},{key:"createdAt",label:"Recibida"},{key:"status",label:"Estado"}]} actions={[
         {label:"Iniciar revisión",endpoint:"/api/v1/admin/appraisals",nextStatus:"IN_REVIEW",statuses:["SUBMITTED"]},
         {label:"Aprobar",endpoint:"/api/v1/admin/appraisals",nextStatus:"APPROVED",statuses:["ESTIMATED"]},
       ]} />

@@ -4,9 +4,12 @@ import {
   listAdminPromotions,
   listAdminStock,
   listFinanceVersions,
+  getAdminAppraisal,
   getAdminOverview,
+  type AdminAppraisalRecord,
 } from "@/lib/admin";
 import { buildSellerLeadDetailDto } from "@/lib/crm/index.mjs";
+import { D1AppraisalMediaRepository } from "@/lib/data/appraisal-media-repository";
 import { D1LeadContextReadRepository } from "@/lib/data/lead-context-read-repository";
 import { adminDependencies } from "./admin-adapter";
 import { requirePanelUser } from "./panel-auth";
@@ -150,6 +153,57 @@ const ars = new Intl.NumberFormat("es-AR", {
   currency: "ARS",
   maximumFractionDigits: 0,
 });
+
+export type AdminAppraisalPhoto = Readonly<{
+  id: string;
+  captureType: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  sortOrder: number;
+  uploadedAt: string;
+  url: string;
+}>;
+
+type AppraisalDetailRuntime = Readonly<{
+  mediaRepository?: D1AppraisalMediaRepository;
+}>;
+
+export async function getAdminAppraisalDetailData(
+  id: string,
+  runtime: AppraisalDetailRuntime = {},
+): Promise<{ appraisal: AdminAppraisalRecord; photos: readonly AdminAppraisalPhoto[] }> {
+  const safeId = id.trim();
+  if (!/^[A-Za-z0-9._:-]{3,200}$/.test(safeId)) notFound();
+  const user = await requirePanelUser(`/panel/tasaciones/${safeId}`);
+  const dependencies = adminDependencies({
+    userId: user.userId,
+    email: user.email,
+    displayName: user.displayName,
+  });
+  let appraisal: AdminAppraisalRecord;
+  try {
+    appraisal = await getAdminAppraisal(dependencies, safeId);
+  } catch {
+    notFound();
+  }
+  const media = await (runtime.mediaRepository ?? new D1AppraisalMediaRepository()).listByAppraisal(
+    safeId,
+  );
+  return {
+    appraisal,
+    photos: media.map((photo): AdminAppraisalPhoto => ({
+      id: photo.id,
+      captureType: photo.captureType,
+      contentType: photo.contentType,
+      byteSize: photo.byteSize,
+      sha256: photo.sha256,
+      sortOrder: photo.sortOrder,
+      uploadedAt: photo.uploadedAt,
+      url: `/api/v1/admin/appraisals/${safeId}/photos/${photo.id}`,
+    })),
+  };
+}
 
 export async function getAdminPanelData() {
   const user = await requirePanelUser("/panel");

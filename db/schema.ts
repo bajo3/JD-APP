@@ -255,6 +255,7 @@ export const appraisalMedia = sqliteTable(
   },
   (table) => [
     uniqueIndex("uq_appraisal_media_r2_key").on(table.r2Key),
+    uniqueIndex("uq_appraisal_media_capture").on(table.appraisalId, table.captureType),
     index("idx_appraisal_media_order").on(table.appraisalId, table.sortOrder),
   ],
 );

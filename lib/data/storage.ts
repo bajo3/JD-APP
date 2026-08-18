@@ -1,10 +1,9 @@
 import { getUploadsBucket } from "@/db";
 
 const MAX_APPRAISAL_IMAGE_BYTES = 10 * 1024 * 1024;
+// Only formats whose metadata the server strips before persisting; HEIC/AVIF
+// cannot be sanitized without server-side re-encoding and stay out.
 const ALLOWED_APPRAISAL_IMAGE_TYPES = new Set([
-  "image/avif",
-  "image/heic",
-  "image/heif",
   "image/jpeg",
   "image/png",
   "image/webp",
