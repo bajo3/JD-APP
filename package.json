@@ -11,7 +11,10 @@
     "start": "vinext start",
     "test": "npm run build && node --test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/d1-migrate.mjs",
+    "db:backup": "node scripts/d1-backup.mjs",
+    "db:drill": "node scripts/d1-backup.mjs --drill"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

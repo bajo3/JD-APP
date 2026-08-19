@@ -39,3 +39,7 @@ yarn-error.log*
 /outputs/
 /work/
 *.tsbuildinfo
+
+# database dumps: real business data, never commit them
+/backups/
+wrangler.export-*.json

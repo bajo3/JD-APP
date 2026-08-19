@@ -33,6 +33,38 @@ fuente comercial. Las migraciones Drizzle se generan con:
 npm run db:generate
 ```
 
+## Base de datos: migraciones, backup y restauracion
+
+Las migraciones se generan con Drizzle y se aplican con un script que registra
+cada archivo en `schema_migrations`, asi que el comando es repetible:
+
+```bash
+npm run db:migrate
+```
+
+Una base creada antes de esa tabla se marca una sola vez con
+`node scripts/d1-migrate.mjs --baseline <id_de_migracion>`; `--dry-run` lista lo
+pendiente sin escribir y el entorno remoto exige `--remote --confirm-remote`.
+
+El backup exporta la base a `backups/` (ignorado por git: son datos reales) y
+reordena el volcado para que cada fila se inserte despues de crear su tabla,
+que es lo que hace restaurable el archivo:
+
+```bash
+npm run db:backup
+```
+
+El ensayo de restauracion exporta, restaura en una base descartable y compara
+los registros de las tablas que sostienen la operacion; falla si alguna no
+coincide:
+
+```bash
+npm run db:drill
+```
+
+Para restaurar de verdad hace falta el flag explicito, porque sobrescribe:
+`node scripts/d1-backup.mjs --restore backups/<archivo>.sql --confirm-restore`.
+
 ## Variables de entorno
 
 ```env
