@@ -7,6 +7,12 @@ contacto/WhatsApp y un panel operativo protegido para administrar la V1.
 
 ## Estado y advertencia
 
+El estado de las trece puertas de salida antes de producción está en
+[PUERTAS_DE_SALIDA.md](PUERTAS_DE_SALIDA.md): qué resuelve el código y qué
+sigue dependiendo de una decisión o un dato de JDA.
+
+
+
 La aplicación contiene datos demo y estados orientativos. No representa
 aprobación financiera, tasación definitiva, disponibilidad comercial ni
 condiciones vigentes hasta conectar y validar las fuentes reales del negocio.

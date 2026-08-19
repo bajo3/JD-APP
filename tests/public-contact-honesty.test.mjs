@@ -75,6 +75,16 @@ test("every public page exposes the skip link target", async () => {
   }
 });
 
+test("mobile keeps the skip link, visible focus and reachable touch targets", async () => {
+  const css = await read("app/globals.css");
+  assert.match(css, /\.skip-link\{[^}]*left:-9999px/);
+  assert.match(css, /\.skip-link:focus\{left:0\}/);
+  assert.match(css, /:focus-visible\{outline:3px solid/);
+  // 44 px is the smallest comfortable target on a 320 px screen.
+  assert.match(css, /@media\(max-width:800px\)\{[^}]*min-height:44px/);
+  assert.match(css, /input\[type=checkbox\],input\[type=radio\]\{width:22px;height:22px/);
+});
+
 test("the offline shell never reads the business profile", async () => {
   const shell = await read("app/_components/PublicShell.tsx");
   assert.match(shell, /export function StaticPublicShell/);
