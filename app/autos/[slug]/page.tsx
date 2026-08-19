@@ -3,6 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { contactHref } from "../../_components/contact";
+import { VehicleJsonLd } from "../../_components/JsonLd";
 import { PublicShell } from "../../_components/PublicShell";
 import { getPublicVehicleDetail } from "@/lib/server/public-data";
 
@@ -53,12 +55,10 @@ export default async function VehicleDetail({ params }: VehicleDetailProps) {
   if (!vehicle) notFound();
   const image = vehicle.image;
 
-  const message = encodeURIComponent(
-    `Hola, quiero consultar por el ${vehicle.name} ${vehicle.year}.`,
-  );
+  const message = `Hola, quiero consultar por el ${vehicle.name} ${vehicle.year}.`;
   return (
     <PublicShell>
-      <main className="public-page detail-page">
+      <main id="contenido" className="public-page detail-page">
         <a className="back-link" href="/stock">← Volver al stock</a>
         <div className="detail-layout">
           <div className={`detail-image ${vehicle.tone}`}>
@@ -82,15 +82,14 @@ export default async function VehicleDetail({ params }: VehicleDetailProps) {
               </Link>
               <a
                 className="context-secondary-link"
-                href={data.profile?.whatsappE164
-                  ? `https://wa.me/${data.profile.whatsappE164.replace(/\D/g, "")}?text=${message}`
-                  : "/contacto"}
+                href={contactHref(data.profile, message)}
               >
                 {data.profile?.whatsappE164 ? "Consultar por WhatsApp" : "Dejar una consulta"} <span>↗</span>
               </a>
             </div>
           </div>
         </div>
+        <VehicleJsonLd vehicle={vehicle} demo={data.demo} />
       </main>
     </PublicShell>
   );

@@ -14,7 +14,7 @@ export default async function StockPage() {
   const data = await getPublicStockData();
   return (
     <PublicShell>
-      <main className="public-page">
+      <main id="contenido" className="public-page">
         <div className="page-intro">
           <p className="eyebrow">NUESTRO STOCK</p>
           <h1>Encontrá tu próximo auto</h1>

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { contactHref, contactLabel } from "./_components/contact";
+import { DealerJsonLd } from "./_components/JsonLd";
 import { OfferCountdown } from "./_components/OfferCountdown";
 import { VehicleCard } from "./_components/VehicleCard";
 import { getPublicHomeData } from "@/lib/server/public-data";
@@ -16,12 +18,11 @@ export default async function Home() {
   const profile = data.profile;
   const offer = data.promotion;
   const featured = data.vehicles.slice(0, 3);
-  const contactHref = profile?.whatsappE164
-    ? whatsappHref(profile.whatsappE164)
-    : "/contacto";
+  const contactUrl = contactHref(profile);
 
   return (
-    <main>
+    <>
+      <a className="skip-link" href="#contenido">Saltar al contenido</a>
       <header className="site-header">
         <a className="brand" href="#inicio">
           <span className="brand-mark">JD</span>
@@ -30,11 +31,12 @@ export default async function Home() {
         <div className="location">
           <span className="pin">⌖</span> {profile?.city ?? "Ubicación a confirmar"}
         </div>
-        <a className="header-whatsapp" href={contactHref}>
-          {profile?.whatsappE164 ? "WhatsApp" : "Contacto"} <span>↗</span>
+        <a className="header-whatsapp" href={contactUrl}>
+          {contactLabel(profile)} <span>↗</span>
         </a>
       </header>
 
+      <main id="contenido">
       <section className="hero" id="inicio">
         <div className="hero-copy">
           <p className="eyebrow">TANDIL · COMPRA INTELIGENTE</p>
@@ -123,19 +125,17 @@ export default async function Home() {
           <p className="detail-meta">No hay vehículos publicados en este momento. Consultanos por próximos ingresos.</p>
         )}
       </section>
+      </main>
 
       <footer id="contacto">
         <div><span className="brand-mark">JD</span><strong>{profile?.name ?? "JESÚS DÍAZ AUTOMOTORES"}</strong></div>
         <p>Estamos para ayudarte a encontrar tu próximo auto.</p>
-        <a href={contactHref}>
-          {profile?.whatsappE164 ? "WhatsApp" : "Contacto"}{profile?.phoneNational ? ` · ${profile.phoneNational}` : ""}
+        <a href={contactUrl}>
+          {contactLabel(profile)}{profile?.phoneNational ? ` · ${profile.phoneNational}` : ""}
         </a>
         <span>{[profile?.address, profile?.city].filter(Boolean).join(" · ") || "Ubicación a confirmar"}</span>
       </footer>
-    </main>
+      <DealerJsonLd profile={profile} />
+    </>
   );
-}
-
-function whatsappHref(value: string): string {
-  return `https://wa.me/${value.replace(/\D/g, "")}`;
 }

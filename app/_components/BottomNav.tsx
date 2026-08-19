@@ -1,2 +1,14 @@
 import Link from "next/link";
-export function BottomNav(){return <nav className="bottom-nav" aria-label="Accesos rápidos"><Link href="/"><span>⌂</span>Inicio</Link><Link href="/stock"><span>▣</span>Stock</Link><Link href="/que-auto-me-llevo"><span>?</span>Ayuda</Link><a href="https://wa.me/5492494587046"><span>◉</span>WhatsApp</a></nav>}
+import type { PublicProfileView } from "@/lib/server/public-data";
+import { contactHref, contactLabel } from "./contact";
+
+export function BottomNav({ profile }: { profile: PublicProfileView | null }) {
+  return (
+    <nav className="bottom-nav" aria-label="Accesos rápidos">
+      <Link href="/"><span aria-hidden="true">⌂</span>Inicio</Link>
+      <Link href="/stock"><span aria-hidden="true">▣</span>Stock</Link>
+      <Link href="/que-auto-me-llevo"><span aria-hidden="true">?</span>Ayuda</Link>
+      <a href={contactHref(profile)}><span aria-hidden="true">◉</span>{contactLabel(profile)}</a>
+    </nav>
+  );
+}

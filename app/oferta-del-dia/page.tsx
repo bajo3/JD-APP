@@ -19,7 +19,7 @@ export default async function OfferPage() {
 
   return (
     <PublicShell>
-      <main className="public-page offer-detail-page">
+      <main id="contenido" className="public-page offer-detail-page">
         <p className="eyebrow">OPORTUNIDAD EXCLUSIVA · VIGENCIA LIMITADA</p>
         <h1>Oferta JD del Día</h1>
         {offer ? (

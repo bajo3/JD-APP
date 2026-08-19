@@ -91,6 +91,18 @@ huella determinista por opción; al crear la simulación el servidor recalcula
 stock, precio, tasación, promoción y tarifario, y rechaza la operación si cambió
 alguna condición.
 
+## Contacto, accesibilidad y SEO
+
+Ningún componente público escribe un teléfono, una dirección ni un enlace de
+WhatsApp: header, footer, navegación inferior y fichas leen el perfil del
+negocio y, si no está configurado, enlazan a `/contacto`. Cada página pública
+empieza con "Saltar al contenido" hacia su `<main id="contenido">` y expone
+foco visible para teclado. Los datos estructurados (`AutoDealer` y `Car`) se
+emiten sólo con datos confirmados: sin perfil cargado no hay JSON-LD de
+contacto y las unidades demo nunca se publican como oferta. El sitemap suma
+las fichas de stock publicado y deja fuera `/panel`, `/offline` y los códigos
+de operación.
+
 ## PWA y offline
 
 `public/sw.js` registra una estrategia explícita por tipo de pedido: las

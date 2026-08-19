@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PublicShell } from "../_components/PublicShell";
+import { StaticPublicShell } from "../_components/PublicShell";
 
 export const metadata = {
   title: "Sin conexión | Jesús Díaz Automotores",
@@ -8,8 +8,8 @@ export const metadata = {
 
 export default function OfflinePage() {
   return (
-    <PublicShell>
-      <main className="public-page form-page">
+    <StaticPublicShell>
+      <main id="contenido" className="public-page form-page">
         <div className="form-intro">
           <p className="eyebrow">SIN CONEXIÓN</p>
           <h1>No pudimos cargar esta página</h1>
@@ -24,6 +24,6 @@ export default function OfflinePage() {
           </Link>
         </div>
       </main>
-    </PublicShell>
+    </StaticPublicShell>
   );
 }

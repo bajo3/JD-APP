@@ -18,7 +18,7 @@ export default async function FinderPage({ searchParams }: FinderPageProps) {
   ]);
   return (
     <PublicShell>
-      <main className="public-page affordability-page">
+      <main id="contenido" className="public-page affordability-page">
         <div className="form-intro">
           <p className="eyebrow">TU OPERACIÓN, PASO A PASO</p>
           <h1>¿Qué auto me llevo?</h1>

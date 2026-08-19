@@ -76,7 +76,7 @@ export default async function SimulationPage({ params }: PageProps) {
 
   return (
     <PublicShell>
-      <main className="public-page form-page">
+      <main id="contenido" className="public-page form-page">
         <div className="form-intro">
           <p className="eyebrow">MI OPERACIÓN JD</p>
           <h1>{vehicleLabel ?? "Operación simulada"}</h1>

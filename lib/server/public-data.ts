@@ -281,3 +281,9 @@ function formatDateTime(value: string): string {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
+export const getPublicProfile = cache(async (): Promise<PublicProfileView | null> => {
+  const access = getDataAccess();
+  const profileRow = await access.businessProfile.get();
+  return baseData(access.source, profileRow).profile;
+});
