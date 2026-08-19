@@ -12,9 +12,15 @@ test("the public simulation snapshot page exists and reads the frozen snapshot s
   assert.match(source, /robots:\s*{\s*index:\s*false/);
   assert.match(source, /listAvailable/);
   assert.match(source, /ya no está publicada/);
-  assert.match(source, /disclaimerSnapshot/);
+  assert.match(source, /publicSimulationView/);
   // The page must never read lead identity or events.
   assert.doesNotMatch(source, /leads\.|lead\.findById|lead_events/);
+
+  // The customer view maps the persisted snapshot and nothing else.
+  const view = await readFile(new URL("lib/server/public-simulation.ts", root), "utf8");
+  const code = view.replace(/^\s*\/\/.*$/gm, "");
+  assert.match(code, /disclaimerSnapshot/);
+  assert.doesNotMatch(code, /leadId|idempotency|inputSnapshot|resultSnapshot/i);
 });
 
 test("the snapshot page renders the frozen disclaimer and expiry state", async () => {
