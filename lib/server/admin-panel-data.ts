@@ -11,6 +11,7 @@ import {
 import { buildSellerLeadDetailDto } from "@/lib/crm/index.mjs";
 import { D1AppraisalMediaRepository } from "@/lib/data/appraisal-media-repository";
 import { D1LeadContextReadRepository } from "@/lib/data/lead-context-read-repository";
+import { getConversionFunnel } from "./funnel-data";
 import { adminDependencies } from "./admin-adapter";
 import { requirePanelUser } from "./panel-auth";
 import { notFound } from "next/navigation";
@@ -212,8 +213,9 @@ export async function getAdminPanelData() {
     email: user.email,
     displayName: user.displayName,
   });
-  const [overview, leadRows, vehicleRows, appraisalRows, promotionRows, financeRows] = await Promise.all([
+  const [overview, funnel, leadRows, vehicleRows, appraisalRows, promotionRows, financeRows] = await Promise.all([
     getAdminOverview(dependencies),
+    getConversionFunnel(),
     listAdminLeads(dependencies, { limit: 100 }),
     listAdminStock(dependencies, { limit: 100 }),
     listAdminAppraisals(dependencies, { limit: 100 }),
@@ -222,6 +224,7 @@ export async function getAdminPanelData() {
   ]);
   return {
     overview,
+    funnel,
     leads: leadRows.map((lead): AdminLead => ({
       id: lead.id,
       name: lead.name,

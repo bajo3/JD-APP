@@ -83,6 +83,7 @@ const { getAdminLeadDetailData } = await import("../lib/server/admin-panel-data.
 const { publicSimulationView, normalizePublicCode } = await import(
   "../lib/server/public-simulation.ts"
 );
+const { getConversionFunnel } = await import("../lib/server/funnel-data.ts");
 const { searchAffordability } = await import("../lib/application/index.mjs");
 const { buildDemoSeedSql } = await import("../scripts/seed-demo-d1.mjs");
 
@@ -349,4 +350,46 @@ test("un código inexistente o mal formado no distingue sus casos", async () => 
   assert.equal(normalizePublicCode("%E0%A4%A"), null);
   assert.equal(normalizePublicCode("jd-abc123"), "JD-ABC123");
   assert.equal(await access.simulations.findByPublicCode("JD-ABC123"), null);
+});
+
+test("el embudo del panel cuenta el recorrido que acaba de ocurrir", async () => {
+  const database = seededDatabase();
+  const access = accessFor(database);
+  const empty = await getConversionFunnel({ db: access.db, now: NOW });
+  assert.equal(empty.empty, true);
+  assert.deepEqual(
+    empty.steps.map((step) => step.value),
+    [0, 0, 0, 0, 0],
+  );
+
+  const { body: created, vehicle } = await confirmOperation(access);
+  const code = created.data.simulationCode ?? created.data.code ?? "JD-E2E001";
+  const leadResponse = await createLeadResponse(
+    leadRequest(
+      {
+        name: "Cliente Embudo",
+        phone: "2494587046",
+        contactConsent: true,
+        source: "SIMULADOR_WEB",
+        simulationCode: code,
+        vehicleSlug: vehicle.slug,
+      },
+      "e2e-funnel-lead",
+    ),
+    { access, now: NOW, idGenerator: () => "e2e-funnel-lead-1" },
+  );
+  assert.equal(leadResponse.status, 201);
+
+  const funnel = await getConversionFunnel({ db: access.db, now: NOW });
+  const value = (key) => funnel.steps.find((step) => step.key === key).value;
+  assert.equal(funnel.empty, false);
+  assert.equal(value("simulations"), 1);
+  assert.equal(value("linkedLeads"), 1);
+  assert.equal(value("handoffs"), 0, "sin handoff registrado el paso queda en cero");
+  assert.equal(value("contacted"), 0, "el lead nace en NEW hasta que el equipo lo mueve");
+
+  // Fuera de la ventana el recorrido deja de contarse, no se estima.
+  const muchLater = new Date(NOW.getTime() + 90 * 86_400_000);
+  const stale = await getConversionFunnel({ db: access.db, now: muchLater });
+  assert.equal(stale.empty, true);
 });

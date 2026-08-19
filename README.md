@@ -100,7 +100,7 @@ login propio en las vistas.
 
 ## Panel interno
 
-- `/panel` — resumen operativo calculado desde D1.
+- `/panel` — resumen operativo y embudo comercial de 30 días calculados desde D1.
 - `/panel/leads` — pipeline y cambios de etapa.
 - `/panel/stock` — alta y ciclo de publicación del inventario.
 - `/panel/tasaciones` — revisión humana y aprobación de rangos.

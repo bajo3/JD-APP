@@ -5,10 +5,19 @@ Cada una dice qué resuelve el código y qué falta de parte del negocio. Lo que
 depende de una decisión de JDA no se marca como cumplido aunque el código ya
 lo soporte: el software puede estar listo y la condición comercial no.
 
-Última verificación: 19 de agosto de 2026, con 182 pruebas, lint y build en
+Última verificación: 19 de agosto de 2026, con 191 pruebas, lint y build en
 verde y la D1 local migrada.
 
 ## Resueltas por código
+
+**7. Analítica del embudo funcionando.**
+El panel muestra el recorrido de los últimos 30 días —operaciones simuladas,
+con contacto dejado, handoffs de WhatsApp, contactados y cerrados— con la
+conversión de cada paso, calculado con consultas sobre las tablas reales. Una
+ventana sin operaciones se declara vacía en lugar de mostrar ceros con tasas.
+Lo que necesita telemetría de cliente o registro de venta (impresiones, vistas,
+aperturas reales de WhatsApp, venta atribuida, diferencia entre cuota simulada
+y cotizada) figura como no medido en la misma pantalla y no se estima.
 
 **8. Simulación reproducible por cliente y vendedor.**
 `/simulaciones/{codigo}` y el panel leen el mismo snapshot congelado.
@@ -75,11 +84,6 @@ cuentas reales del equipo y probar el acceso con ellas.
 **3. Casos dorados aprobados por JDA.**
 No hay un set de operaciones de referencia revisado por el negocio. Sin eso,
 las pruebas verifican coherencia interna, no criterio comercial.
-
-**7. Analítica del embudo funcionando.**
-`lead_event` registra los hitos del recorrido y el panel muestra contadores
-operativos (leads, stock, tasaciones, ofertas), pero todavía no hay un embudo
-que relacione búsquedas, simulaciones, handoffs y cierres.
 
 ## Nota de entorno
 
