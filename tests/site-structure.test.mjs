@@ -32,6 +32,7 @@ test("the six public V1 surfaces and PWA metadata exist", async () => {
     "app/que-auto-me-llevo/page.tsx",
     "app/oferta-del-dia/page.tsx",
     "app/contacto/page.tsx",
+    "app/simulaciones/[codigo]/page.tsx",
     "app/manifest.ts",
     "app/robots.ts",
     "app/sitemap.ts",

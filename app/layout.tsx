@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import { PwaRuntime } from "./_components/PwaRuntime";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -18,7 +19,17 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase,
     title,
     description,
-    icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+    applicationName: "Jesús Díaz Automotores",
+    appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "JD Automotores" },
+    icons: {
+      icon: [
+        { url: "/favicon.svg", type: "image/svg+xml" },
+        { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      ],
+      shortcut: "/favicon.svg",
+      apple: "/apple-touch-icon.png",
+    },
+    other: { "theme-color": "#18201f" },
     openGraph: {
       type: "website",
       locale: "es_AR",
@@ -39,7 +50,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <PwaRuntime />
+        {children}
+      </body>
     </html>
   );
 }

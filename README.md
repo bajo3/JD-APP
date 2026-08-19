@@ -56,6 +56,9 @@ login propio en las vistas.
 - `/que-auto-me-llevo` — búsqueda de accesibilidad económica orientativa.
 - `/oferta-del-dia` — Oferta JD del Día y contador visual.
 - `/contacto` — contacto y handoff a WhatsApp cuando está configurado.
+- `/simulaciones/[codigo]` — snapshot congelado de una operación simulada,
+  de solo lectura y `noindex`; muestra los mismos importes que ve el vendedor.
+- `/offline` — pantalla estática que sirve el service worker sin conexión.
 
 ## Panel interno
 
@@ -86,4 +89,17 @@ La API versionada vive bajo `/api/v1` y está diseñada para ser reutilizable
 por una futura app Expo/React Native. La búsqueda de accesibilidad devuelve una
 huella determinista por opción; al crear la simulación el servidor recalcula
 stock, precio, tasación, promoción y tarifario, y rechaza la operación si cambió
-alguna condición. No se implementa service worker todavía.
+alguna condición.
+
+## PWA y offline
+
+`public/sw.js` registra una estrategia explícita por tipo de pedido: las
+navegaciones van a red primero y caen en `/offline` si no hay conexión, los
+assets estáticos usan cache con revalidación en segundo plano y `/api/**` (y
+todo lo que no sea GET) nunca se cachea. El stock, los precios, las ofertas y
+las financiaciones jamás se sirven desde caché: sin conexión la web lo dice en
+lugar de mostrar datos viejos. Los iconos PNG del manifest se regeneran con:
+
+```bash
+node scripts/generate-pwa-icons.mjs
+```
