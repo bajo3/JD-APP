@@ -18,7 +18,9 @@ export const businessProfileFixture: typeof businessProfiles.$inferInsert = {
   city: "Tandil",
   address: "Piedrabuena esq. Rauch",
   phoneNational: "2494587046",
-  whatsappE164: "+5492494587046",
+  // Sin WhatsApp confirmado por JDA: el fixture deja el número vacío para que
+  // toda superficie caiga al formulario de /contacto (fail-closed).
+  whatsappE164: null,
   timezone: "America/Argentina/Buenos_Aires",
   currency: "ARS",
   locale: "es-AR",

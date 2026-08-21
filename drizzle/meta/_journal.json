@@ -64,6 +64,13 @@
       "when": 1787308800000,
       "tag": "0008_consignment_virtual",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787395200000,
+      "tag": "0009_retire_unconfirmed_whatsapp",
+      "breakpoints": true
     }
   ]
 }

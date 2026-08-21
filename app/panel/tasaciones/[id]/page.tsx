@@ -85,6 +85,9 @@ export default async function AppraisalDetailPage({ params }: PageProps) {
           <ul className="appraisal-photo-grid">
             {photos.map((photo) => (
               <li key={photo.id}>
+                {/* Bytes privados servidos por una API autenticada con no-store:
+                    next/image no puede optimizarlos ni cachearlos sin exponerlos. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={photo.url}
                   alt={`${CAPTURE_LABELS[photo.captureType] ?? photo.captureType} del usado`}

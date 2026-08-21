@@ -11,6 +11,7 @@ const PUBLIC_SOURCES = [
   "app/oferta-del-dia/page.tsx",
   "app/contacto/page.tsx",
   "app/tasar-mi-usado/page.tsx",
+  "app/consignar-mi-auto/page.tsx",
   "app/que-auto-me-llevo/page.tsx",
   "app/offline/page.tsx",
   "app/simulaciones/[codigo]/page.tsx",
@@ -18,6 +19,10 @@ const PUBLIC_SOURCES = [
   "app/_components/PublicHeader.tsx",
   "app/_components/PublicFooter.tsx",
   "app/_components/BottomNav.tsx",
+  "app/_components/LeadForm.tsx",
+  "app/_components/ConsignmentForm.tsx",
+  "app/_components/consignment/FormSteps.tsx",
+  "app/_components/consignment/photo-client.ts",
 ];
 
 const SHELL_PAGES = [
@@ -26,6 +31,7 @@ const SHELL_PAGES = [
   "app/oferta-del-dia/page.tsx",
   "app/contacto/page.tsx",
   "app/tasar-mi-usado/page.tsx",
+  "app/consignar-mi-auto/page.tsx",
   "app/que-auto-me-llevo/page.tsx",
   "app/offline/page.tsx",
   "app/simulaciones/[codigo]/page.tsx",
@@ -59,6 +65,18 @@ test("contact entry points fall back to the form when WhatsApp is not configured
     assert.match(source, /profile: PublicProfileView \| null/, path);
     assert.match(source, /contactHref|Link href="\/contacto"/, path);
   }
+});
+
+test("the business WhatsApp number stays retired until JDA confirms it", async () => {
+  // El número cargado por 0003 no tenía evidencia de confirmación: el fixture
+  // no lo define y la migración 0009 lo retira del perfil persistido.
+  const fixtures = await read("lib/data/fixtures.ts");
+  assert.match(fixtures, /whatsappE164: null/);
+  assert.doesNotMatch(fixtures, /whatsappE164: "\+549/);
+
+  const retirement = await read("drizzle/0009_retire_unconfirmed_whatsapp.sql");
+  assert.match(retirement, /`whatsapp_e164` = NULL/);
+  assert.match(retirement, /'\+5492494587046'/);
 });
 
 test("every public page exposes the skip link target", async () => {
