@@ -37,6 +37,8 @@ export const DRILL_TABLES = [
   "simulation",
   "lead",
   "appraisal",
+  "consignment",
+  "consignment_media",
   "admin_audit_log",
 ];
 

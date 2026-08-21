@@ -7,23 +7,27 @@ import {
   editAdminVehicle,
   expireAdminPromotion,
   getAdminAppraisal,
+  getAdminConsignment,
   getAdminLead,
   getAdminOverview,
   getAdminPromotion,
   getAdminVehicle,
   getFinanceVersion,
   listAdminAppraisals,
+  listAdminConsignments,
   listAdminLeads,
   listAdminPromotions,
   listAdminStock,
   listFinanceVersions,
   pauseAdminPromotion,
   reviewAdminAppraisal,
+  reviewAdminConsignment,
   scheduleAdminPromotion,
   transitionAdminLead,
   transitionAdminVehicle,
   transitionFinanceVersion,
   type AppraisalStatus,
+  type ConsignmentStatus,
   type CreateFinanceVersionInput,
   type CreatePromotionInput,
   type CreateVehicleInput,
@@ -161,6 +165,27 @@ export function adminAppraisal(request: Request, id: string): Promise<Response> 
       expectedVersion: requiredInteger(payload, "expectedVersion", { min: 1 }),
       nextStatus: requiredString(payload, "nextStatus", { max: 30 }) as AppraisalStatus,
       currency: payload.currency ?? "ARS",
+    }));
+  });
+}
+
+export function adminConsignments(request: Request): Promise<Response> {
+  return adminApiRoute(request, async (actor) => adminData(await listAdminConsignments(dependencies(actor), {
+    status: statusFilter(request, ["SUBMITTED", "IN_REVIEW", "ACCEPTED", "REJECTED"] as const),
+    limit: limitFilter(request),
+  })));
+}
+
+export function adminConsignment(request: Request, id: string): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const safeId = resourceId(id);
+    if (request.method === "GET") return adminData(await getAdminConsignment(dependencies(actor), safeId));
+    const payload = await readJsonObject(request);
+    return adminData(await reviewAdminConsignment(dependencies(actor), {
+      id: safeId,
+      expectedVersion: requiredInteger(payload, "expectedVersion", { min: 1 }),
+      nextStatus: requiredString(payload, "nextStatus", { max: 30 }) as ConsignmentStatus,
+      notes: typeof payload.notes === "string" ? payload.notes : undefined,
     }));
   });
 }

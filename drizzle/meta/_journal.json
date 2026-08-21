@@ -57,6 +57,13 @@
       "when": 1787049600000,
       "tag": "0007_appraisal_media_capture",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787308800000,
+      "tag": "0008_consignment_virtual",
+      "breakpoints": true
     }
   ]
 }

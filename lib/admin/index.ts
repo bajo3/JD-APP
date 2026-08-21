@@ -24,6 +24,7 @@ export type AppraisalStatus =
   | "APPROVED"
   | "REJECTED"
   | "EXPIRED";
+export type ConsignmentStatus = "SUBMITTED" | "IN_REVIEW" | "ACCEPTED" | "REJECTED";
 export type FinanceStatus = "DRAFT" | "PUBLISHED" | "RETIRED";
 export type PromotionStatus =
   | "DRAFT"
@@ -44,7 +45,7 @@ export interface AdminActor {
 
 export interface AdminAuditCommand {
   eventId: string;
-  entityType: "VEHICLE" | "LEAD" | "APPRAISAL" | "FINANCE_VERSION" | "PROMOTION";
+  entityType: "VEHICLE" | "LEAD" | "APPRAISAL" | "CONSIGNMENT" | "FINANCE_VERSION" | "PROMOTION";
   entityId: string;
   action: string;
   occurredAt: string;
@@ -114,6 +115,25 @@ export interface AdminAppraisalRecord {
   isDemo: boolean;
 }
 
+export interface AdminConsignmentRecord {
+  id: string;
+  leadId: string | null;
+  vehicleDescription: string;
+  year: number;
+  mileageKm: number;
+  status: ConsignmentStatus;
+  askingPriceCents: number | null;
+  currency: "ARS";
+  ownerNotes: string | null;
+  notes: string | null;
+  reviewedBy: string | null;
+  decidedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  isDemo: boolean;
+}
+
 export interface FinanceTierRecord {
   id: string;
   termMonths: number;
@@ -176,6 +196,7 @@ export interface AdminOverviewRecord {
   stock: Readonly<Record<VehicleStatus, number>>;
   leads: Readonly<Record<LeadStatus, number>>;
   appraisals: Readonly<Record<AppraisalStatus, number>>;
+  consignments: Readonly<Record<ConsignmentStatus, number>>;
   finance: Readonly<Record<FinanceStatus, number>>;
   promotions: Readonly<Record<PromotionStatus, number>>;
   generatedAt: string;
@@ -202,6 +223,12 @@ export interface LeadFilters {
 
 export interface AppraisalFilters {
   status?: AppraisalStatus;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ConsignmentFilters {
+  status?: ConsignmentStatus;
   limit?: number;
   cursor?: string;
 }
@@ -275,6 +302,20 @@ export interface AppraisalRepository {
   }): Promise<MutationResult<AdminAppraisalRecord>>;
 }
 
+export interface ConsignmentRepository {
+  list(filters?: ConsignmentFilters): Promise<AdminConsignmentRecord[]>;
+  findById(id: string): Promise<AdminConsignmentRecord | null>;
+  countReadyMedia(id: string): Promise<number>;
+  review(input: {
+    id: string;
+    expectedVersion: number;
+    status: ConsignmentStatus;
+    notes?: string;
+    actor: AdminActor;
+    audit: AdminAuditCommand;
+  }): Promise<MutationResult<AdminConsignmentRecord>>;
+}
+
 export interface FinanceRepository {
   listVersions(): Promise<FinanceVersionRecord[]>;
   findById(id: string): Promise<FinanceVersionRecord | null>;
@@ -323,6 +364,7 @@ export interface AdminRepositories {
   stock: StockRepository;
   leads: LeadRepository;
   appraisals: AppraisalRepository;
+  consignments: ConsignmentRepository;
   finance: FinanceRepository;
   promotions: PromotionRepository;
 }
@@ -957,6 +999,95 @@ export async function reviewAdminAppraisal(
     { from: record.status, to: input.nextStatus, hasNotes: input.notes !== undefined },
   );
   return resolveMutation(await dependencies.repositories.appraisals.review(payload));
+}
+
+export async function listAdminConsignments(
+  dependencies: AdminDependencies,
+  filters: ConsignmentFilters = {},
+): Promise<AdminConsignmentRecord[]> {
+  await authorize(dependencies);
+  return dto(await dependencies.repositories.consignments.list({ ...filters, limit: validatePage(filters.limit) }));
+}
+
+export async function getAdminConsignment(
+  dependencies: AdminDependencies,
+  id: string,
+): Promise<AdminConsignmentRecord> {
+  await authorize(dependencies);
+  const safeId = requiredString(id, "id");
+  return dto(await findOrThrow(() => dependencies.repositories.consignments.findById(safeId)));
+}
+
+const CONSIGNMENT_TRANSITIONS: Readonly<Record<ConsignmentStatus, readonly ConsignmentStatus[]>> = {
+  SUBMITTED: ["IN_REVIEW"],
+  IN_REVIEW: ["ACCEPTED", "REJECTED"],
+  ACCEPTED: [],
+  REJECTED: [],
+};
+
+// Debe coincidir con CONSIGNMENT_CAPTURE_TYPES de la capa de datos; se
+// duplica para mantener este módulo libre de dependencias de infraestructura.
+const CONSIGNMENT_REQUIRED_READY_PHOTOS = 5;
+
+export interface ReviewConsignmentInput {
+  id: string;
+  expectedVersion: number;
+  nextStatus: ConsignmentStatus;
+  notes?: string;
+}
+
+export async function reviewAdminConsignment(
+  dependencies: AdminDependencies,
+  input: ReviewConsignmentInput,
+): Promise<AdminConsignmentRecord> {
+  const actor = await authorize(dependencies);
+  const instant = now(dependencies);
+  const id = requiredString(input.id, "id");
+  const expectedVersion = version(input.expectedVersion);
+  const record = await findOrThrow(() => dependencies.repositories.consignments.findById(id));
+  if (!CONSIGNMENT_TRANSITIONS[record.status].includes(input.nextStatus)) {
+    invalidTransition(record.status, input.nextStatus);
+  }
+  // El servidor, no sólo la UI, exige las cinco capturas confirmadas antes de
+  // abrir la revisión: una consignación sin fotos completas no pasa a IN_REVIEW.
+  if (input.nextStatus === "IN_REVIEW") {
+    const readyPhotos = await dependencies.repositories.consignments.countReadyMedia(id);
+    if (readyPhotos !== CONSIGNMENT_REQUIRED_READY_PHOTOS) {
+      throw new AdminError("ADMIN_INVALID_TRANSITION", ERROR_MESSAGES.transition, 409, {
+        current: record.status,
+        next: input.nextStatus,
+        readyPhotos,
+        requiredPhotos: CONSIGNMENT_REQUIRED_READY_PHOTOS,
+      });
+    }
+  }
+  const notes = input.notes !== undefined ? requiredString(input.notes, "notes", 2_000) : undefined;
+  const audit = makeAudit(
+    dependencies,
+    "CONSIGNMENT",
+    id,
+    "CONSIGNMENT_STATUS_CHANGED",
+    expectedVersion,
+    instant.iso,
+    {
+      from: record.status,
+      to: input.nextStatus,
+      hasNotes: notes !== undefined,
+      // Accepting enables the offer; stock publication stays a separate
+      // manual circuit so this never counts as a listing by itself.
+      publishesStock: false,
+    },
+  );
+  return resolveMutation(
+    await dependencies.repositories.consignments.review({
+      id,
+      expectedVersion,
+      status: input.nextStatus,
+      ...(notes !== undefined ? { notes } : {}),
+      actor,
+      audit,
+    }),
+  );
 }
 
 export async function listFinanceVersions(

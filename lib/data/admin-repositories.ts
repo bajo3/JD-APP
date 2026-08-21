@@ -1,8 +1,10 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { getD1Binding, getDb, type Database } from "@/db";
 import {
   adminIdempotency,
   appraisals,
+  consignments,
+  consignmentMedia,
   financePlanTiers,
   financePlanVersions,
   leadInterests,
@@ -12,6 +14,7 @@ import {
   simulations,
   vehicles,
   type AppraisalRow,
+  type ConsignmentRow,
   type FinancePlanTierRow,
   type FinancePlanVersionRow,
   type LeadRow,
@@ -77,7 +80,7 @@ function auditStatement(
     resourceId: string;
     previousVersion: number | null;
     nextVersion: number;
-    table: "vehicle" | "lead" | "appraisal" | "finance_plan_version" | "promotion";
+    table: "vehicle" | "lead" | "appraisal" | "consignment" | "finance_plan_version" | "promotion";
     versionColumn: "version" | "lock_version";
   },
 ): D1PreparedStatement {
@@ -376,6 +379,48 @@ export class D1AdminRepository {
     return record ? { ok: true, record } : { ok: false, reason: "not_found" };
   }
 
+  listConsignments(status?: string): Promise<ConsignmentRow[]> {
+    return status
+      ? this.db.select().from(consignments).where(eq(consignments.status, status)).orderBy(desc(consignments.updatedAt))
+      : this.db.select().from(consignments).orderBy(desc(consignments.updatedAt));
+  }
+
+  async findConsignmentById(id: string): Promise<ConsignmentRow | null> {
+    const [row] = await this.db.select().from(consignments).where(eq(consignments.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async countReadyConsignmentMedia(id: string): Promise<number> {
+    const [row] = await this.db
+      .select({ total: count() })
+      .from(consignmentMedia)
+      .where(and(eq(consignmentMedia.consignmentId, id), eq(consignmentMedia.status, "READY")));
+    return Number(row?.total ?? 0);
+  }
+
+  async reviewConsignment(
+    input: { id: string; nextStatus: string; reviewNotes?: string | null } & CasContext,
+  ): Promise<MutationResult<ConsignmentRow>> {
+    const nextVersion = input.expectedVersion + 1;
+    const decided = input.nextStatus === "ACCEPTED" || input.nextStatus === "REJECTED";
+    const update = this.d1.prepare(
+      `UPDATE consignment SET status = ?, review_notes = COALESCE(?, review_notes),
+       reviewed_by = ?, decided_at = CASE WHEN ? THEN ? ELSE decided_at END,
+       version = ?, updated_at = ?
+       WHERE id = ? AND version = ?`,
+    ).bind(input.nextStatus, input.reviewNotes ?? null, input.actor.email,
+      decided ? 1 : 0, input.audit.occurredAt, nextVersion, input.audit.occurredAt,
+      input.id, input.expectedVersion);
+    const audit = auditStatement(this.d1, {
+      actor: input.actor, audit: input.audit, resourceType: "consignment", resourceId: input.id,
+      previousVersion: input.expectedVersion, nextVersion, table: "consignment", versionColumn: "version",
+    });
+    const [result] = await this.d1.batch([update, audit]);
+    if (changes(result) === 0) return this.currentConflict("consignment", input.id, input.expectedVersion);
+    const record = await this.findConsignmentById(input.id);
+    return record ? { ok: true, record } : { ok: false, reason: "not_found" };
+  }
+
   listFinanceVersions(status?: string): Promise<FinancePlanVersionRow[]> {
     return status
       ? this.db.select().from(financePlanVersions).where(eq(financePlanVersions.status, status)).orderBy(desc(financePlanVersions.updatedAt))
@@ -569,7 +614,7 @@ export class D1AdminRepository {
   }
 
   private async currentConflict(
-    table: "vehicle" | "lead" | "appraisal" | "finance_plan_version" | "promotion",
+    table: "vehicle" | "lead" | "appraisal" | "consignment" | "finance_plan_version" | "promotion",
     id: string,
     expectedVersion: number,
     versionColumn: "version" | "lock_version" = "version",

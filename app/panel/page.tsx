@@ -16,6 +16,7 @@ export default async function PanelPage() {
       <PanelMetric label="Leads nuevos" value={String(overview.leads.NEW)} trend={`${total(overview.leads)} totales`} accent="orange" />
       <PanelMetric label="Vehículos disponibles" value={String(overview.stock.AVAILABLE)} trend={`${total(overview.stock)} en inventario`} />
       <PanelMetric label="Tasaciones pendientes" value={String(overview.appraisals.SUBMITTED + overview.appraisals.IN_REVIEW)} trend={`${total(overview.appraisals)} solicitudes`} />
+      <PanelMetric label="Consignaciones por revisar" value={String(overview.consignments.SUBMITTED + overview.consignments.IN_REVIEW)} trend={`${overview.consignments.ACCEPTED} aceptadas`} accent="orange" />
       <PanelMetric label="Ofertas activas" value={String(overview.promotions.ACTIVE)} trend={`${overview.promotions.SCHEDULED} programadas`} />
     </section>
 

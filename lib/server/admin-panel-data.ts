@@ -1,15 +1,19 @@
 import {
   listAdminAppraisals,
+  listAdminConsignments,
   listAdminLeads,
   listAdminPromotions,
   listAdminStock,
   listFinanceVersions,
   getAdminAppraisal,
+  getAdminConsignment,
   getAdminOverview,
   type AdminAppraisalRecord,
+  type AdminConsignmentRecord,
 } from "@/lib/admin";
 import { buildSellerLeadDetailDto } from "@/lib/crm/index.mjs";
 import { D1AppraisalMediaRepository } from "@/lib/data/appraisal-media-repository";
+import { D1ConsignmentMediaRepository } from "@/lib/data/consignment-media-repository";
 import { D1LeadContextReadRepository } from "@/lib/data/lead-context-read-repository";
 import { getConversionFunnel } from "./funnel-data";
 import { adminDependencies } from "./admin-adapter";
@@ -206,6 +210,66 @@ export async function getAdminAppraisalDetailData(
   };
 }
 
+export type AdminConsignment = {
+  id: string;
+  name: string;
+  vehicle: string;
+  status: string;
+  createdAt: string;
+  version: number;
+};
+
+export type AdminConsignmentPhoto = Readonly<{
+  id: string;
+  captureType: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  sortOrder: number;
+  uploadedAt: string;
+  url: string;
+}>;
+
+type ConsignmentDetailRuntime = Readonly<{
+  mediaRepository?: D1ConsignmentMediaRepository;
+}>;
+
+export async function getAdminConsignmentDetailData(
+  id: string,
+  runtime: ConsignmentDetailRuntime = {},
+): Promise<{ consignment: AdminConsignmentRecord; photos: readonly AdminConsignmentPhoto[] }> {
+  const safeId = id.trim();
+  if (!/^[A-Za-z0-9._:-]{3,200}$/.test(safeId)) notFound();
+  const user = await requirePanelUser(`/panel/consignaciones/${safeId}`);
+  const dependencies = adminDependencies({
+    userId: user.userId,
+    email: user.email,
+    displayName: user.displayName,
+  });
+  let consignment: AdminConsignmentRecord;
+  try {
+    consignment = await getAdminConsignment(dependencies, safeId);
+  } catch {
+    notFound();
+  }
+  const media = await (runtime.mediaRepository ?? new D1ConsignmentMediaRepository()).listReadyByConsignment(
+    safeId,
+  );
+  return {
+    consignment,
+    photos: media.map((photo): AdminConsignmentPhoto => ({
+      id: photo.id,
+      captureType: photo.captureType,
+      contentType: photo.contentType,
+      byteSize: photo.byteSize,
+      sha256: photo.sha256,
+      sortOrder: photo.sortOrder,
+      uploadedAt: photo.uploadedAt,
+      url: `/api/v1/admin/consignments/${safeId}/photos/${photo.id}`,
+    })),
+  };
+}
+
 export async function getAdminPanelData() {
   const user = await requirePanelUser("/panel");
   const dependencies = adminDependencies({
@@ -213,12 +277,13 @@ export async function getAdminPanelData() {
     email: user.email,
     displayName: user.displayName,
   });
-  const [overview, funnel, leadRows, vehicleRows, appraisalRows, promotionRows, financeRows] = await Promise.all([
+  const [overview, funnel, leadRows, vehicleRows, appraisalRows, consignmentRows, promotionRows, financeRows] = await Promise.all([
     getAdminOverview(dependencies),
     getConversionFunnel(),
     listAdminLeads(dependencies, { limit: 100 }),
     listAdminStock(dependencies, { limit: 100 }),
     listAdminAppraisals(dependencies, { limit: 100 }),
+    listAdminConsignments(dependencies, { limit: 100 }),
     listAdminPromotions(dependencies, { limit: 100 }),
     listFinanceVersions(dependencies),
   ]);
@@ -250,6 +315,14 @@ export async function getAdminPanelData() {
       status: appraisal.status,
       createdAt: appraisal.createdAt,
       version: appraisal.version,
+    })),
+    consignments: consignmentRows.map((consignment): AdminConsignment => ({
+      id: consignment.id,
+      name: consignment.leadId ?? "Sin lead asociado",
+      vehicle: `${consignment.vehicleDescription} ${consignment.year}`,
+      status: consignment.status,
+      createdAt: consignment.createdAt,
+      version: consignment.version,
     })),
     offers: promotionRows.map((promotion): AdminOffer => ({
       id: promotion.id,

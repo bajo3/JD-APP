@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useRef, useState } from "react";
 
-type Resource = "vehicle" | "lead" | "appraisal" | "finance" | "promotion";
+type Resource = "vehicle" | "lead" | "appraisal" | "consignment" | "finance" | "promotion";
 export type AdminFormRecord = Readonly<{
   id: string;
   label: string;
@@ -113,6 +113,13 @@ function formFields(resource: Resource, records: readonly AdminFormRecord[]) {
       <Field name="notes" label="Observaciones" required={false} />
     </>;
   }
+  if (resource === "consignment") {
+    return <>
+      <RecordSelect records={records} label="Consignación" />
+      <label>Próximo estado<select name="nextStatus" required><option value="">Seleccionar</option><option value="IN_REVIEW">En revisión</option><option value="ACCEPTED">Aceptada</option><option value="REJECTED">Rechazada</option></select></label>
+      <Field name="notes" label="Observaciones" required={false} />
+    </>;
+  }
   if (resource === "finance") {
     return <>
       <Field name="version" label="Código de versión" /><Field name="name" label="Nombre del plan" /><Field name="provider" label="Proveedor" />
@@ -157,12 +164,16 @@ function buildRequest(resource: Resource, form: FormData, records: readonly Admi
       source: form.has("isDemo") ? "DEMO:admin" : "manual", isDemo: form.has("isDemo"),
     } } as const;
   }
-  if (resource === "lead" || resource === "appraisal") {
+  if (resource === "lead" || resource === "appraisal" || resource === "consignment") {
     const record = selectedRecord(value("recordId"), records);
     if (resource === "lead") return { method: "PATCH", endpoint: `/api/v1/admin/leads/${record.id}`, payload: {
       expectedVersion: record.version, nextStatus: value("nextStatus"),
       ...(value("assignedTo") ? { assignedTo: value("assignedTo") } : {}),
       ...(value("lostReason") ? { lostReason: value("lostReason") } : {}),
+    } } as const;
+    if (resource === "consignment") return { method: "PATCH", endpoint: `/api/v1/admin/consignments/${record.id}`, payload: {
+      expectedVersion: record.version, nextStatus: value("nextStatus"),
+      ...(value("notes") ? { notes: value("notes") } : {}),
     } } as const;
     const nextStatus = value("nextStatus");
     return { method: "PATCH", endpoint: `/api/v1/admin/appraisals/${record.id}`, payload: {
@@ -249,7 +260,7 @@ function iso(value: string, label: string): string {
 }
 
 function formTitle(resource: Resource): string {
-  return ({ vehicle: "Alta de vehículo", lead: "Actualizar etapa de un lead", appraisal: "Revisar una tasación", finance: "Crear versión de tarifario", promotion: "Crear Oferta JD" })[resource];
+  return ({ vehicle: "Alta de vehículo", lead: "Actualizar etapa de un lead", appraisal: "Revisar una tasación", consignment: "Revisar una consignación", finance: "Crear versión de tarifario", promotion: "Crear Oferta JD" })[resource];
 }
 
 function RecordSelect({ records, label }: { records: readonly AdminFormRecord[]; label: string }) {

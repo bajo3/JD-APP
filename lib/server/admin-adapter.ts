@@ -1,6 +1,7 @@
 import type {
   AdminAppraisalRecord,
   AdminAuditCommand,
+  AdminConsignmentRecord,
   AdminLeadRecord,
   AdminOverviewRecord,
   AdminPromotionRecord,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/data/admin-repositories";
 import type {
   AppraisalRow,
+  ConsignmentRow,
   FinancePlanTierRow,
   FinancePlanVersionRow,
   LeadRow,
@@ -96,6 +98,27 @@ function appraisalRecord(row: AppraisalRow): AdminAppraisalRecord {
   };
 }
 
+function consignmentRecord(row: ConsignmentRow): AdminConsignmentRecord {
+  return {
+    id: row.id,
+    leadId: row.leadId,
+    vehicleDescription: [row.make, row.model].filter(Boolean).join(" "),
+    year: row.year,
+    mileageKm: row.mileageKm,
+    status: row.status as AdminConsignmentRecord["status"],
+    askingPriceCents: row.askingPriceCents,
+    currency: "ARS",
+    ownerNotes: row.ownerNotes,
+    notes: row.reviewNotes,
+    reviewedBy: row.reviewedBy,
+    decidedAt: row.decidedAt,
+    version: row.version,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    isDemo: row.publicCode.toUpperCase().includes("DEMO"),
+  };
+}
+
 function parseStringArray(value: string): string[] {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -161,14 +184,15 @@ export function createAdminRepositoriesAdapter(
   return {
     overview: {
       async get(at): Promise<AdminOverviewRecord> {
-        const [stock, leads, appraisals, finance, promotions] = await Promise.all([
+        const [stock, leads, appraisals, consignmentRows, finance, promotions] = await Promise.all([
           data.listVehicles(), data.listLeads(), data.listAppraisals(),
-          data.listFinanceVersions(), data.listPromotions(),
+          data.listConsignments(), data.listFinanceVersions(), data.listPromotions(),
         ]);
         return {
           stock: statusCounts(["DRAFT", "AVAILABLE", "RESERVED", "SOLD", "PAUSED", "ARCHIVED"] as const, stock),
           leads: statusCounts(["NEW", "CONTACTED", "QUALIFIED", "WON", "LOST"] as const, leads),
           appraisals: statusCounts(["SUBMITTED", "IN_REVIEW", "ESTIMATED", "APPROVED", "REJECTED", "EXPIRED"] as const, appraisals),
+          consignments: statusCounts(["SUBMITTED", "IN_REVIEW", "ACCEPTED", "REJECTED"] as const, consignmentRows),
           finance: statusCounts(["DRAFT", "PUBLISHED", "RETIRED"] as const, finance),
           promotions: statusCounts(["DRAFT", "SCHEDULED", "ACTIVE", "PAUSED", "EXPIRED", "ARCHIVED"] as const, promotions),
           generatedAt: at,
@@ -257,6 +281,24 @@ export function createAdminRepositoriesAdapter(
           certaintyLevel: input.certaintyLevel, validUntil: input.validUntil,
           reviewNotes: input.notes, actor: input.actor, audit: audit(input.audit),
         }), appraisalRecord);
+      },
+    },
+    consignments: {
+      async list(filters) {
+        return (await data.listConsignments(filters?.status)).slice(0, filters?.limit ?? 100).map(consignmentRecord);
+      },
+      async findById(id) {
+        const row = await data.findConsignmentById(id);
+        return row ? consignmentRecord(row) : null;
+      },
+      async countReadyMedia(id) {
+        return data.countReadyConsignmentMedia(id);
+      },
+      async review(input) {
+        return dataResult(await data.reviewConsignment({
+          id: input.id, expectedVersion: input.expectedVersion, nextStatus: input.status,
+          reviewNotes: input.notes, actor: input.actor, audit: audit(input.audit),
+        }), consignmentRecord);
       },
     },
     finance: {

@@ -18,7 +18,7 @@ test("panel server pages pass only serializable action descriptors", () => {
 
 test("admin forms use exact protected endpoints and stable create keys", () => {
   const source = readFileSync("app/panel/_components/AdminResourceForm.tsx", "utf8");
-  for (const endpoint of ["vehicles", "leads", "appraisals", "finance-plans", "promotions"]) {
+  for (const endpoint of ["vehicles", "leads", "appraisals", "consignments", "finance-plans", "promotions"]) {
     assert.match(source, new RegExp(`/api/v1/admin/${endpoint}`));
   }
   assert.match(source, /idempotencyKey\.current \?\?=/);

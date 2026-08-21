@@ -3,6 +3,7 @@ import { getDataAccess } from "@/lib/server/data-access";
 
 // Only public marketing surfaces are listed. Operation codes
 // (/simulaciones/**), the offline shell and the panel never enter the sitemap.
+// Consignación (V1.1) queda fuera hasta que JDA apruebe su operación.
 const STATIC_PATHS = [
   "/",
   "/stock",

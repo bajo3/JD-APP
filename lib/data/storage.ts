@@ -32,6 +32,14 @@ export interface ObjectStore {
     byteSize: number;
     sha256: string;
   }): Promise<string>;
+  putPrivateConsignmentImage(input: {
+    consignmentId: string;
+    mediaId: string;
+    body: ReadableStream | ArrayBuffer | ArrayBufferView;
+    contentType: string;
+    byteSize: number;
+    sha256: string;
+  }): Promise<string>;
   getStockObject(key: string): Promise<R2ObjectBody | null>;
   getPrivateObject(key: string): Promise<R2ObjectBody | null>;
   deleteObject(key: string): Promise<void>;
@@ -82,6 +90,34 @@ export class R2ObjectStore implements ObjectStore {
       httpMetadata: { contentType: input.contentType },
       customMetadata: {
         appraisalId: input.appraisalId,
+        sha256: input.sha256,
+        visibility: "private",
+      },
+    });
+    return key;
+  }
+
+  // Consignment photos share the appraisal image policy: only formats whose
+  // metadata the server strips, capped at the same size.
+  async putPrivateConsignmentImage(input: {
+    consignmentId: string;
+    mediaId: string;
+    body: ReadableStream | ArrayBuffer | ArrayBufferView;
+    contentType: string;
+    byteSize: number;
+    sha256: string;
+  }): Promise<string> {
+    if (!ALLOWED_APPRAISAL_IMAGE_TYPES.has(input.contentType)) {
+      throw new Error("UNSUPPORTED_CONSIGNMENT_IMAGE_TYPE");
+    }
+    if (input.byteSize <= 0 || input.byteSize > MAX_APPRAISAL_IMAGE_BYTES) {
+      throw new Error("CONSIGNMENT_IMAGE_SIZE_OUT_OF_RANGE");
+    }
+    const key = `private/consignments/${input.consignmentId}/${input.mediaId}`;
+    await getUploadsBucket().put(key, input.body, {
+      httpMetadata: { contentType: input.contentType },
+      customMetadata: {
+        consignmentId: input.consignmentId,
         sha256: input.sha256,
         visibility: "private",
       },

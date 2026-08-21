@@ -260,6 +260,70 @@ export const appraisalMedia = sqliteTable(
   ],
 );
 
+export const consignments = sqliteTable(
+  "consignment",
+  {
+    id: text("id").primaryKey(),
+    publicCode: text("public_code").notNull(),
+    idempotencyKey: text("idempotency_key"),
+    commandHash: text("command_hash").notNull(),
+    uploadTokenHash: text("upload_token_hash").notNull(),
+    leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    make: text("make").notNull(),
+    model: text("model").notNull(),
+    trim: text("trim"),
+    year: integer("year").notNull(),
+    mileageKm: integer("mileage_km").notNull(),
+    declaredCondition: text("declared_condition").notNull(),
+    askingPriceCents: integer("asking_price_cents"),
+    ownerNotes: text("owner_notes"),
+    status: text("status").notNull().default("SUBMITTED"),
+    reviewedBy: text("reviewed_by"),
+    reviewNotes: text("review_notes"),
+    decidedAt: text("decided_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_consignment_public_code").on(table.publicCode),
+    uniqueIndex("uq_consignment_idempotency_key").on(table.idempotencyKey),
+    index("idx_consignment_status_updated").on(table.status, table.updatedAt),
+    index("idx_consignment_lead").on(table.leadId),
+  ],
+);
+
+export const consignmentMedia = sqliteTable(
+  "consignment_media",
+  {
+    id: text("id").primaryKey(),
+    consignmentId: text("consignment_id")
+      .notNull()
+      .references(() => consignments.id, { onDelete: "cascade" }),
+    r2Key: text("r2_key").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    captureType: text("capture_type").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    requestHash: text("request_hash").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    version: integer("version").notNull().default(1),
+    uploadedAt: text("uploaded_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_consignment_media_r2_key").on(table.r2Key),
+    // Only live rows hold a capture slot; ARCHIVED retries may reoccupy it.
+    uniqueIndex("uq_consignment_media_capture")
+      .on(table.consignmentId, table.captureType)
+      .where(sql`status <> 'ARCHIVED'`),
+    index("idx_consignment_media_order").on(table.consignmentId, table.sortOrder),
+    index("idx_consignment_media_status").on(table.status, table.updatedAt),
+  ],
+);
+
 export const financePlanVersions = sqliteTable(
   "finance_plan_version",
   {
@@ -533,6 +597,9 @@ export type LeadRow = typeof leads.$inferSelect;
 export type AppraisalRow = typeof appraisals.$inferSelect;
 export type SimulationRow = typeof simulations.$inferSelect;
 export type PromotionRow = typeof promotions.$inferSelect;
+export type ConsignmentRow = typeof consignments.$inferSelect;
+export type ConsignmentMediaRow = typeof consignmentMedia.$inferSelect;
+
 export type FinancePlanVersionRow = typeof financePlanVersions.$inferSelect;
 export type FinancePlanTierRow = typeof financePlanTiers.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
