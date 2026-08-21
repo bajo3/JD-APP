@@ -1,15 +1,21 @@
 # Jesús Díaz Automotores
 
 Web/PWA mobile-first para Jesús Díaz Automotores (Tandil), construida sobre
-Next App Router + vinext/Sites. Incluye catálogo demo, ficha de vehículos,
-tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del Día,
-contacto/WhatsApp y un panel operativo protegido para administrar la V1.
+Next App Router + vinext/Sites. La V1 incluye catálogo demo, ficha de
+vehículos, tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del
+Día, contacto/WhatsApp y un panel operativo protegido. La consignación
+virtual está implementada y endurecida, pero clasificada como **V1.1
+opcional**: no se navega ni se anuncia hasta que JDA apruebe comisión,
+contrato y retiro de unidad (ver
+[PLAN_CONSIGNACION_VIRTUAL.md](PLAN_CONSIGNACION_VIRTUAL.md)).
 
 ## Estado y advertencia
 
 El estado de las trece puertas de salida antes de producción está en
 [PUERTAS_DE_SALIDA.md](PUERTAS_DE_SALIDA.md): qué resuelve el código y qué
-sigue dependiendo de una decisión o un dato de JDA.
+sigue dependiendo de una decisión o un dato de JDA. Las decisiones
+comerciales pendientes, con responsable y efecto de no tener respuesta, están
+en [DECISIONES_JDA.md](DECISIONES_JDA.md).
 
 
 
@@ -98,12 +104,20 @@ login propio en las vistas.
   de solo lectura y `noindex`; muestra los mismos importes que ve el vendedor.
 - `/offline` — pantalla estática que sirve el service worker sin conexión.
 
+Rutas V1.1 opcionales (fuera de la navegación V1 hasta aprobación de JDA):
+
+- `/consignar-mi-auto` — consignación virtual: alta atómica con token de
+  carga de 256 bits, cinco fotos guiadas con lifecycle recuperable y revisión
+  del equipo antes de ofrecer la unidad. `noindex`.
+
 ## Panel interno
 
 - `/panel` — resumen operativo y embudo comercial de 30 días calculados desde D1.
 - `/panel/leads` — pipeline y cambios de etapa.
 - `/panel/stock` — alta y ciclo de publicación del inventario.
 - `/panel/tasaciones` — revisión humana y aprobación de rangos.
+- `/panel/consignaciones` — ofertas de consignación virtual: fotos privadas y
+  decisión de aceptación.
 - `/panel/financiacion` — versiones, tramos y publicación de tarifarios.
 - `/panel/ofertas` — creación, programación y ciclo de promociones.
 

@@ -5,8 +5,9 @@ Cada una dice qué resuelve el código y qué falta de parte del negocio. Lo que
 depende de una decisión de JDA no se marca como cumplido aunque el código ya
 lo soporte: el software puede estar listo y la condición comercial no.
 
-Última verificación: 19 de agosto de 2026, con 191 pruebas, lint y build en
-verde y la D1 local migrada.
+Última verificación: 21 de agosto de 2026, con 218 pruebas, lint y build en
+verde, la D1 local migrada, el ensayo de restauración sobre 12 tablas y la
+consignación aislada como V1.1 endurecida.
 
 ## Resueltas por código
 
@@ -38,8 +39,9 @@ Cada página abre con "Saltar al contenido" y expone foco visible.
 
 **11. Backups y restauración ensayados.**
 `npm run db:drill` exporta la base, la restaura en una base descartable y
-compara diez tablas; falla si alguna no coincide. El volcado se reordena para
-que sea restaurable. Ensayado contra la D1 local.
+compara doce tablas —incluidas las de consignación—; falla si alguna no
+coincide. El volcado se reordena para que sea restaurable. Ensayado contra la
+D1 local.
 
 **12. Fotos privadas inaccesibles públicamente.**
 Las fotos de tasación viven en R2 privado, se sirven sólo por el binario
@@ -70,9 +72,12 @@ snapshot. Los textos siguen siendo los redactados durante el desarrollo y
 necesitan revisión de JDA antes de publicar.
 
 **5. Número y enlace de WhatsApp confirmados.**
-Ninguna superficie pública escribe un número: header, footer, navegación y
-fichas leen el perfil y, sin WhatsApp configurado, enlazan a `/contacto`.
-Falta cargar el número confirmado en el perfil del negocio.
+Ninguna superficie pública escribe un número: header, footer, navegación,
+formularios y fichas leen el perfil y, sin WhatsApp configurado, enlazan a
+`/contacto`. El número +5492494587046 cargado por la migración 0003 quedó
+retirado (migración 0009) por falta de evidencia de confirmación: la pregunta
+exacta vive en [DECISIONES_JDA.md](DECISIONES_JDA.md) (#5). Cuando JDA
+confirme el E.164 y la modalidad, se carga en el perfil del negocio.
 
 **6. Roles y accesos internos probados.**
 El panel exige la allowlist `PANEL_ALLOWED_EMAILS` y falla cerrado ante
@@ -84,6 +89,38 @@ cuentas reales del equipo y probar el acceso con ellas.
 **3. Casos dorados aprobados por JDA.**
 No hay un set de operaciones de referencia revisado por el negocio. Sin eso,
 las pruebas verifican coherencia interna, no criterio comercial.
+
+## Consignación virtual (V1.1)
+
+Implementada y endurecida por código (plan en
+[PLAN_CONSIGNACION_VIRTUAL.md](PLAN_CONSIGNACION_VIRTUAL.md)), pero **aislada
+como capacidad opcional V1.1**: no aparece en la navegación, la portada ni el
+sitemap de la candidata V1, y su ruta directa declara `noindex` con un aviso
+de capacidad en revisión. El circuito completo:
+
+- Alta atómica: lead + consentimiento + consignación en un único batch D1,
+  idempotente por clave con hash de comando (replay reproduce, otro comando
+  es 409 sin escrituras).
+- Autorización de carga por token bearer de 256 bits entregado una sola vez
+  en el alta; de D1 sólo se guarda su SHA-256. Código inexistente, token
+  incorrecto o faltante y registro legacy responden 404 indistinguible.
+- Lifecycle de media `PENDING → READY | FAILED → ARCHIVED` con confirmación
+  por versión, reanudación de fallos de R2 con la misma clave y archivo,
+  archivo de reservas abandonadas con limpieza de objetos huérfanos. Sólo
+  `READY` se lista o entrega.
+- El servidor exige exactamente cinco fotos `READY` antes de
+  `SUBMITTED → IN_REVIEW`.
+- Migración 0008 con snapshot Drizzle coherente (`npm run db:generate`
+  responde sin cambios; la cadena aplica desde cero e incrementalmente y el
+  ensayo de restauración incluye las tablas nuevas).
+
+Lo que sigue pendiente del negocio para habilitarla:
+
+- Comisión, contrato de consignación y mecanismo de retiro de la unidad: sin
+  eso, `ACCEPTED` sólo habilita la oferta y la publicación en stock sigue
+  siendo manual.
+- Definir si el precio esperado por el dueño se muestra al equipo tal cual se
+  recibe (hoy es orientativo y nunca se publica).
 
 ## Nota de entorno
 

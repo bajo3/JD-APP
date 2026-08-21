@@ -21,6 +21,12 @@ La V1 contiene únicamente seis capacidades:
 
 Todo lo demás queda fuera de V1: JD Scan con IA, Mi Garage, JD Passport, realidad aumentada, vista 360°, negociador con IA, chatbot generalista, recomendaciones con IA, automatización comercial avanzada y login de clientes complejo.
 
+**Consignación virtual (V1.1, opcional):** existe implementada y endurecida
+([PLAN_CONSIGNACION_VIRTUAL.md](PLAN_CONSIGNACION_VIRTUAL.md)), pero no forma
+parte de la V1: no se navega ni se anuncia hasta que JDA apruebe comisión,
+contrato y retiro de unidad. Las decisiones pendientes viven en
+[DECISIONES_JDA.md](DECISIONES_JDA.md).
+
 ---
 
 ## 2. Datos del negocio
