@@ -142,5 +142,12 @@ Lo que sigue pendiente del negocio para habilitarla:
 ## Nota de entorno
 
 `npm start` (`vinext start`) falla en Windows con `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
-No afecta a `npm run dev`, al build ni al despliegue; sí impide levantar el
-build de producción localmente en esa plataforma.
+El preview del build de producción se hace con Wrangler y la D1 local
+(`npx wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/state`,
+documentado en el README); con ese preview se ejecutó el recorrido comercial
+completo contra el Worker real: búsqueda con resultados alcanzables, simulación
+con alta, replay idéntico y conflicto 409, snapshot público por API y página,
+lead con contexto y replay, handoff que responde `WHATSAPP_NOT_CONFIGURED`
+sin número confirmado, panel y media fallando cerrado sin sesión, y el limitador
+respondiendo 429 con `Retry-After` y contadores persistidos en D1 que sobreviven
+reinicios del Worker.

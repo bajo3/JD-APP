@@ -62,6 +62,11 @@ export function apiErrorResponse(error: unknown): Response {
 
   console.error("api_v1_unhandled_error", {
     name: error instanceof Error ? error.name : "UnknownError",
+    // Mensajes internos de runtime/persistencia; por política nunca llegan
+    // PII, tokens ni cuerpos a esta rama.
+    ...(error instanceof Error && error.message
+      ? { message: error.message.slice(0, 300) }
+      : {}),
   });
   return json(
     { error: { code: "INTERNAL_ERROR", message: "No pudimos completar la operación." } },

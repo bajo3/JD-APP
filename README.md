@@ -37,6 +37,19 @@ npm test          # pruebas configuradas del starter
 npm run build     # build de producción Sites/vinext
 ```
 
+Preview del build de producción con el Worker real y la D1 local. En Windows
+`npm start` falla con `ERR_UNSUPPORTED_ESM_URL_SCHEME`, así que el preview se
+hace con Wrangler; el `--persist-to` es obligatorio: sin él, Wrangler resuelve
+el estado relativo al config de `dist/server` y crea una base vacía:
+
+```bash
+npm run build
+npx wrangler dev --config dist/server/wrangler.json --port 8788 --persist-to .wrangler/state
+```
+
+Antes de reconstruir, detener el preview y los procesos `workerd`: con el
+servidor corriendo, `npm run build` falla con `EPERM` al limpiar `dist`.
+
 Para datos demo locales, usar las fixtures incluidas por el proyecto y el
 seed/local data access configurado en `db/` y `lib/`; no usar estos datos como
 fuente comercial. Las migraciones Drizzle se generan con:
