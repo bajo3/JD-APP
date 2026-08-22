@@ -5,8 +5,9 @@ Cada una dice qué resuelve el código y qué falta de parte del negocio. Lo que
 depende de una decisión de JDA no se marca como cumplido aunque el código ya
 lo soporte: el software puede estar listo y la condición comercial no.
 
-Última verificación: 21 de agosto de 2026, con 218 pruebas, lint y build en
-verde, la D1 local migrada, el ensayo de restauración sobre 12 tablas y la
+Última verificación: 22 de agosto de 2026, con 223 pruebas, lint, TypeScript y
+build en verde, la D1 local migrada, el ensayo de restauración sobre 13 tablas,
+el limitador de abuso por IP cubriendo todas las mutaciones públicas y la
 consignación aislada como V1.1 endurecida.
 
 ## Resueltas por código
@@ -39,9 +40,9 @@ Cada página abre con "Saltar al contenido" y expone foco visible.
 
 **11. Backups y restauración ensayados.**
 `npm run db:drill` exporta la base, la restaura en una base descartable y
-compara doce tablas —incluidas las de consignación—; falla si alguna no
-coincide. El volcado se reordena para que sea restaurable. Ensayado contra la
-D1 local.
+compara trece tablas —incluidas las de consignación y la del limitador de
+abuso—; falla si alguna no coincide. El volcado se reordena para que sea
+restaurable. Ensayado contra la D1 local.
 
 **12. Fotos privadas inaccesibles públicamente.**
 Las fotos de tasación viven en R2 privado, se sirven sólo por el binario
@@ -79,7 +80,7 @@ retirado (migración 0009) por falta de evidencia de confirmación: la pregunta
 exacta vive en [DECISIONES_JDA.md](DECISIONES_JDA.md) (#5). Cuando JDA
 confirme el E.164 y la modalidad, se carga en el perfil del negocio.
 
-**6. Roles y accesos internos probados.**
+**6. Accesos internos del panel probados.**
 El panel exige la allowlist `PANEL_ALLOWED_EMAILS` y falla cerrado ante
 configuración vacía o inválida (`tests/panel-auth.test.mjs`). Falta cargar las
 cuentas reales del equipo y probar el acceso con ellas.
@@ -89,6 +90,22 @@ cuentas reales del equipo y probar el acceso con ellas.
 **3. Casos dorados aprobados por JDA.**
 No hay un set de operaciones de referencia revisado por el negocio. Sin eso,
 las pruebas verifican coherencia interna, no criterio comercial.
+
+## Endurecimiento transversal
+
+**Límites de abuso.** Todas las mutaciones públicas —búsqueda, simulación,
+lead, handoff, tasación con sus fotos y consignación con sus fotos— pasan por
+un limitador por IP con ventana fija persistido en D1 (`rate_limit_window`),
+sin contadores en memoria del Worker. Responde 429 estable con `Retry-After`,
+el tope y la ventana se ajustan por entorno sin desplegar código
+(`tests/rate-limit.test.mjs`) y la tabla entra en el backup y el ensayo de
+restauración.
+
+**Permisos.** La V1 usa una única allowlist de administradores
+(`PANEL_ALLOWED_EMAILS`): todos los correos habilitados operan todo el panel,
+cada acción sensible queda auditada por actor y el acceso falla cerrado sin
+configuración. Los roles por función quedan para una versión posterior
+([DECISIONES_JDA.md](DECISIONES_JDA.md) #8).
 
 ## Consignación virtual (V1.1)
 

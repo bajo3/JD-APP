@@ -159,15 +159,16 @@ Se compartirán dominio, contratos, cliente API, formateadores y design tokens. 
 
 ### Navegación pública
 
-En móvil habrá una barra inferior con cinco accesos:
+En móvil hay una barra inferior con cuatro accesos:
 
 1. Inicio.
 2. Stock.
-3. ¿Qué me llevo?
-4. Oferta JD.
-5. WhatsApp.
+3. ¿Qué me llevo? (etiquetado "Ayuda").
+4. Contacto/WhatsApp: abre el chat cuando el número está confirmado y cae a
+   `/contacto` si no lo está.
 
-En escritorio se convierte en un encabezado horizontal. WhatsApp permanece como CTA visible.
+En escritorio se convierte en un encabezado horizontal. El CTA de contacto
+permanece visible; la Oferta JD se alcanza desde la portada y su propia ruta.
 
 | Ruta | Objetivo y contenido principal |
 |---|---|
@@ -179,33 +180,30 @@ En escritorio se convierte en un encabezado horizontal. WhatsApp permanece como 
 | `/simulaciones/[codigo]` | Snapshot de la operación elegida |
 | `/oferta-del-dia` | Beneficio vigente, condiciones y cuenta regresiva |
 | `/contacto` | WhatsApp, teléfono, dirección y mapa |
-| `/mi-operacion/[codigo]` | Resumen temporal mediante código o sesión firmada |
 
 ### Panel interno
 
-Una sola aplicación interna con permisos por rol evita duplicar paneles.
+Una sola aplicación interna evita duplicar paneles. En la V1 el acceso usa una
+única allowlist de administradores (`PANEL_ALLOWED_EMAILS`): todos los correos
+habilitados operan todo el panel y cada acción sensible queda auditada por
+actor. Los roles por función (`ADMIN`, `SELLER`, `APPRAISER`, `MARKETING`)
+quedan para una versión posterior si el equipo crece; la decisión está
+registrada en [DECISIONES_JDA.md](DECISIONES_JDA.md) (#8).
 
-| Ruta | Roles principales | Función |
-|---|---|---|
-| `/panel` | Todos | Resumen según rol |
-| `/panel/leads` | Vendedor, administrador | Pipeline, contexto y seguimiento |
-| `/panel/leads/[id]` | Vendedor, administrador | Snapshot, notas, WhatsApp y estado |
-| `/panel/stock` | Vendedor, administrador | Unidades y disponibilidad |
-| `/panel/tasaciones` | Tasador, administrador | Revisiones, rangos y vigencia |
-| `/panel/financiacion` | Administrador | Planes, tasas, gastos y versiones |
-| `/panel/ofertas` | Marketing, administrador | Programar y pausar promociones |
-| `/panel/usuarios` | Administrador | Usuarios y roles |
-| `/panel/configuracion` | Administrador | Datos del negocio y reglas generales |
-| `/panel/auditoria` | Administrador | Cambios sensibles y responsables |
+| Ruta | Función |
+|---|---|
+| `/panel` | Resumen del negocio calculado desde registros operativos |
+| `/panel/leads` | Pipeline, contexto y seguimiento |
+| `/panel/leads/[id]` | Snapshot, notas, WhatsApp y estado |
+| `/panel/stock` | Unidades y disponibilidad |
+| `/panel/tasaciones` | Revisiones, rangos y vigencia |
+| `/panel/tasaciones/[id]` | Revisión de una tasación con sus fotos privadas |
+| `/panel/financiacion` | Planes, tasas, gastos y versiones |
+| `/panel/ofertas` | Programar y pausar promociones |
+| `/panel/consignaciones` | Consignaciones V1.1 en revisión |
 
-Roles iniciales:
-
-- `ADMIN`.
-- `SELLER`.
-- `APPRAISER`.
-- `MARKETING`.
-
-La autorización se valida en cada caso de uso, no solo ocultando botones.
+La autorización se valida en cada caso de uso, no solo ocultando botones, y
+falla cerrado cuando la allowlist no está configurada.
 
 ---
 
@@ -434,13 +432,13 @@ La reserva con seña queda preparada en el modelo, pero fuera del primer corte s
 | `promotion_vehicle` | Unidades incluidas en la promoción |
 | `lead` | Identidad y estado comercial |
 | `lead_interest` | Vehículo, simulación, tasación u oferta asociada |
-| `lead_event` | Eventos del embudo e intención explicable |
+| `lead_event` | Eventos del embudo e intención explicable, incluidos los handoffs de WhatsApp con su código de operación |
 | `consent` | Canal, propósito, fecha y revocación |
-| `whatsapp_handoff` | Código de operación y aperturas |
-| `push_subscription` | Suscripción por dispositivo |
-| `outbox_event` | Entrega confiable a sistemas externos |
-| `audit_log` | Cambios comerciales sensibles |
-| `admin_user_role` | Permisos del equipo |
+| `admin_idempotency` | Replays y conflictos de las mutaciones del panel |
+| `admin_audit_log` | Cambios comerciales sensibles con actor |
+
+`push_subscription` (push nativo) y `outbox_event` (entrega a CRM externo)
+quedan para después de la V1, cuando exista un proveedor confirmado.
 
 Reglas de persistencia:
 
@@ -456,31 +454,49 @@ Reglas de persistencia:
 
 ## 8. Contratos API V1
 
-### Públicos y futura app
+### Públicos y futura app (implementadas en la V1)
 
 ```text
 GET    /api/v1/vehicles
 GET    /api/v1/vehicles/{slug}
-POST   /api/v1/appraisals
-POST   /api/v1/appraisals/{id}/photo-upload
+GET    /api/v1/promotions/current
+GET    /api/v1/offers/current
+GET    /api/v1/business-profile
+GET    /api/v1/media/vehicles/{mediaId}
+GET    /api/v1/simulations/{code}
 POST   /api/v1/affordability/search
 POST   /api/v1/simulations
-GET    /api/v1/simulations/{code}
-GET    /api/v1/promotions/current
-POST   /api/v1/promotions/{id}/interest
+POST   /api/v1/appraisals
+POST   /api/v1/appraisals/{code}/photos
+POST   /api/v1/leads
 POST   /api/v1/whatsapp/handoffs
-POST   /api/v1/push/subscriptions
-DELETE /api/v1/push/subscriptions/{id}
 ```
 
-### Integraciones
+Las mutaciones públicas pasan por el limitador de abuso por IP y ventana fija
+persistido en D1, que responde 429 estable con `Retry-After`. La consignación
+V1.1 agrega `POST /api/v1/consignments` y `POST /api/v1/consignments/{code}/photos`,
+sin navegación pública.
+
+### Panel interno
 
 ```text
-POST /api/v1/webhooks/stock/{provider}
-POST /api/v1/webhooks/crm/{provider}
-POST /api/v1/webhooks/whatsapp
-POST /api/v1/jobs/outbox
+/api/v1/admin/overview
+/api/v1/admin/vehicles        (+ media por unidad)
+/api/v1/admin/finance-plans
+/api/v1/admin/promotions
+/api/v1/admin/leads
+/api/v1/admin/appraisals      (+ fotos privadas)
+/api/v1/admin/consignments    (V1.1)
 ```
+
+Todas autorizan contra la allowlist antes de leer o escribir, con idempotencia,
+control de versión y auditoría por actor.
+
+### Posteriores a la V1
+
+Push (`/api/v1/push/*`), webhooks de stock/CRM/WhatsApp y el job de outbox no
+forman parte de la V1: se agregan cuando exista un proveedor confirmado. La
+entrega del lead en la V1 es click-to-chat y el seguimiento vive en el panel.
 
 Reglas transversales:
 
@@ -511,7 +527,9 @@ Implementaciones iniciales:
 - WhatsApp: click-to-chat y API Business posterior.
 - Financiación: tarifario manual versionado; API del proveedor después.
 
-Los eventos externos pasan por una outbox con reintentos e idempotencia para no perder leads cuando un proveedor está caído.
+Los eventos hacia proveedores externos pasarán por una outbox con reintentos e
+idempotencia para no perder leads cuando un proveedor esté caído; en la V1 no
+hay proveedores externos y el circuito no se expone.
 
 ---
 
@@ -538,7 +556,8 @@ PWA:
 - No tratar como verdad offline el stock, el precio, una oferta o una financiación.
 - Mostrar siempre “última actualización”.
 - Banner sin conexión.
-- Solicitar push después de una acción de interés, nunca al entrar.
+- Push nativo posterior a la V1: cuando exista, se solicitará después de una
+  acción de interés, nunca al entrar.
 
 Estados mínimos de cada pantalla:
 
@@ -556,7 +575,7 @@ Estados mínimos de cada pantalla:
 
 - Sin cuenta obligatoria para clientes en V1.
 - Sesión anónima en cookie firmada, segura y HttpOnly.
-- Panel con autenticación fuerte, MFA y roles.
+- Panel con autenticación del proveedor de identidad y allowlist de correos; sin roles en la V1.
 - Autorización dentro de los casos de uso.
 - Rate limiting y protección adaptativa contra abuso.
 - CSP, HSTS y cabeceras de seguridad.
@@ -567,7 +586,7 @@ Estados mínimos de cada pantalla:
 - Logs sin teléfonos completos, fotos ni payloads financieros identificables.
 - Consentimientos separados para contacto solicitado, push y marketing por WhatsApp.
 - Retención, exportación, anonimización y eliminación de datos definidas.
-- Auditoría append-only para precios, ofertas, tasaciones manuales, stock, reglas y roles.
+- Auditoría append-only para precios, ofertas, tasaciones manuales, stock y reglas, siempre con actor identificado.
 - Backups de base y almacenamiento verificados por separado.
 - Revisión legal local antes de cobrar señas o automatizar mensajes comerciales.
 
@@ -601,6 +620,12 @@ offer_cta_clicked
 lead_contacted
 sale_attributed
 ```
+
+Estado en la V1: sólo se registran los eventos del embudo que ocurren en el
+servidor (`simulation_created`, `whatsapp_handoff_created`, cambios de estado
+del lead, descuentos y tasaciones aplicadas) en `lead_event`. La telemetría de
+cliente (impresiones, vistas, aperturas reales de WhatsApp) y la atribución de
+venta no se registran todavía y el panel las declara como no medidas.
 
 Métricas de producto:
 
@@ -743,7 +768,7 @@ Responsable: Sol; apoyo visual de Luna Go.
 
 - Monorepo, CI y ambientes.
 - Base, migraciones y perfil de negocio.
-- Acceso del panel y roles.
+- Acceso del panel con allowlist única.
 - Observabilidad y manejo de errores.
 - Design tokens, layout mobile y navegación base.
 
@@ -841,7 +866,7 @@ La V1 no se publica hasta demostrar:
 - Casos dorados aprobados por JDA.
 - Mensajes legales y consentimientos revisados.
 - Número y enlace de WhatsApp confirmados.
-- Roles y accesos internos probados.
+- Accesos internos del panel probados.
 - Fotos privadas inaccesibles públicamente.
 - Simulación reproducible por cliente y vendedor.
 - Oferta no aplicable fuera de vigencia.
