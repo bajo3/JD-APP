@@ -2,18 +2,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly fields?: Record<string, string>;
+  readonly headers?: Record<string, string>;
 
   constructor(
     status: number,
     code: string,
     message: string,
     fields?: Record<string, string>,
+    headers?: Record<string, string>,
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.fields = fields;
+    this.headers = headers;
   }
 }
 
@@ -38,30 +41,39 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
   });
 }
 
+/**
+ * Mapeo estable de errores a respuesta JSON; lo comparten el envoltorio de
+ * rutas y el limitador de abuso para que un 429 tenga la misma forma que
+ * cualquier otro error de la API.
+ */
+export function apiErrorResponse(error: unknown): Response {
+  if (error instanceof ApiError) {
+    return json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.fields ? { fields: error.fields } : {}),
+        },
+      },
+      { status: error.status, headers: error.headers },
+    );
+  }
+
+  console.error("api_v1_unhandled_error", {
+    name: error instanceof Error ? error.name : "UnknownError",
+  });
+  return json(
+    { error: { code: "INTERNAL_ERROR", message: "No pudimos completar la operación." } },
+    { status: 500 },
+  );
+}
+
 export async function apiRoute(run: () => Promise<Response>): Promise<Response> {
   try {
     return await run();
   } catch (error) {
-    if (error instanceof ApiError) {
-      return json(
-        {
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.fields ? { fields: error.fields } : {}),
-          },
-        },
-        { status: error.status },
-      );
-    }
-
-    console.error("api_v1_unhandled_error", {
-      name: error instanceof Error ? error.name : "UnknownError",
-    });
-    return json(
-      { error: { code: "INTERNAL_ERROR", message: "No pudimos completar la operación." } },
-      { status: 500 },
-    );
+    return apiErrorResponse(error);
   }
 }
 

@@ -11,9 +11,10 @@ import {
   requiredString,
 } from "@/lib/server/api";
 import { getDataAccess, sourceMeta } from "@/lib/server/data-access";
+import { withRateLimit } from "@/lib/server/rate-limit";
 import { appraisalDto } from "@/lib/server/dto";
 
-export async function POST(request: Request): Promise<Response> {
+async function create(request: Request): Promise<Response> {
   return apiRoute(async () => {
     const idempotencyKey = requireIdempotencyKey(request);
     const payload = await readJsonObject(request);
@@ -67,3 +68,5 @@ export async function POST(request: Request): Promise<Response> {
     );
   });
 }
+
+export const POST = withRateLimit("public.appraisal", create);

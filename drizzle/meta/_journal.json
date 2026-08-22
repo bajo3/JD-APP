@@ -71,6 +71,13 @@
       "when": 1787395200000,
       "tag": "0009_retire_unconfirmed_whatsapp",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787481600000,
+      "tag": "0010_rate_limit_windows",
+      "breakpoints": true
     }
   ]
 }

@@ -85,11 +85,25 @@ NEXT_PUBLIC_SITE_URL=https://tu-dominio-confirmado.example
 
 # allowlist del panel, separada por comas; configurar en el entorno de hosting
 PANEL_ALLOWED_EMAILS=equipo@dominio-confirmado.example
+
+# opcionales; límites de abuso por IP y ventana (tope o tope/minutos).
+# Valores por defecto: búsqueda 30/10m, simulación 30/10m, lead 10/10m,
+# handoff 10/10m, tasación 10/30m, foto de tasación 30/30m,
+# consignación 6/60m, foto de consignación 30/60m.
+RATE_LIMIT_PUBLIC_LEAD=10/10
+RATE_LIMIT_PUBLIC_CONSIGNMENT_PHOTO=30/60
 ```
 
 No inventar ni publicar un dominio, correo o condición comercial. El panel
 requiere el guard de acceso configurado para el entorno; no se implementa un
-login propio en las vistas.
+login propio en las vistas. V1 usa una única allowlist de administradores:
+todos los correos habilitados operan todo el panel, con auditoría por actor;
+los roles por función quedan para una versión posterior si el equipo crece.
+
+Las mutaciones públicas (búsquedas, simulaciones, leads, handoffs, tasaciones,
+consignaciones y sus fotos) pasan por un limitador de abuso por IP con ventana
+fija persistido en D1 —sin estado en memoria del Worker— que responde `429`
+estable con `Retry-After` cuando la ventana se agota.
 
 ## Rutas públicas
 

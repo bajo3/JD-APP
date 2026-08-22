@@ -40,6 +40,7 @@ export const DRILL_TABLES = [
   "consignment",
   "consignment_media",
   "admin_audit_log",
+  "rate_limit_window",
 ];
 
 export function parseArgs(argv) {

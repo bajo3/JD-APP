@@ -324,6 +324,19 @@ export const consignmentMedia = sqliteTable(
   ],
 );
 
+// Contadores de abuso por ventana fija: el Worker no guarda estado en
+// memoria; D1 es la única fuente y las filas vencen con la ventana.
+export const rateLimitWindows = sqliteTable(
+  "rate_limit_window",
+  {
+    key: text("key").primaryKey(),
+    resource: text("resource").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    hits: integer("hits").notNull().default(0),
+  },
+  (table) => [index("idx_rate_limit_expiry").on(table.expiresAt)],
+);
+
 export const financePlanVersions = sqliteTable(
   "finance_plan_version",
   {

@@ -1,5 +1,7 @@
 import { createConsignmentIntake } from "@/lib/server/consignment-intake";
+import { withRateLimit } from "@/lib/server/rate-limit";
 
-export async function POST(request: Request): Promise<Response> {
-  return createConsignmentIntake(request);
-}
+export const POST = withRateLimit(
+  "public.consignment",
+  (request) => createConsignmentIntake(request),
+);

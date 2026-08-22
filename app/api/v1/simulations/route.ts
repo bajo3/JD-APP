@@ -1,5 +1,7 @@
 import { createSimulationResponse } from "@/lib/server/simulation-api";
+import { withRateLimit } from "@/lib/server/rate-limit";
 
-export async function POST(request: Request): Promise<Response> {
-  return createSimulationResponse(request);
-}
+export const POST = withRateLimit(
+  "public.simulation",
+  (request) => createSimulationResponse(request),
+);

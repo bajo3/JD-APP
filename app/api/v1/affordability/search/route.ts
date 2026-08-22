@@ -5,8 +5,9 @@ import {
   rethrowApplicationError,
 } from "@/lib/server/affordability";
 import { getDataAccess, sourceMeta } from "@/lib/server/data-access";
+import { withRateLimit } from "@/lib/server/rate-limit";
 
-export async function POST(request: Request): Promise<Response> {
+function create(request: Request): Promise<Response> {
   return apiRoute(async () => {
     const payload = await readJsonObject(request);
     const now = new Date();
@@ -23,3 +24,5 @@ export async function POST(request: Request): Promise<Response> {
     }
   });
 }
+
+export const POST = withRateLimit("public.search", create);
