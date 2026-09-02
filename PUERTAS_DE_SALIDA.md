@@ -5,10 +5,17 @@ Cada una dice qué resuelve el código y qué falta de parte del negocio. Lo que
 depende de una decisión de JDA no se marca como cumplido aunque el código ya
 lo soporte: el software puede estar listo y la condición comercial no.
 
-Última verificación: 22 de agosto de 2026, con 223 pruebas, lint, TypeScript y
-build en verde, la D1 local migrada, el ensayo de restauración sobre 13 tablas,
-el limitador de abuso por IP cubriendo todas las mutaciones públicas y la
-consignación aislada como V1.1 endurecida.
+Última verificación: 1 de septiembre de 2026, con 257 pruebas, lint, TypeScript
+y build en verde, la D1 local migrada hasta 0011, el ensayo de restauración
+sobre las veintiocho tablas del esquema, el limitador de abuso por IP cubriendo
+todas las mutaciones públicas y la consignación aislada como V1.1 endurecida.
+
+El recorrido de la cuenta se verificó además contra el Worker real con Wrangler
+y la D1 local: el alta devuelve 201 y entrega la sesión en cookie `HttpOnly`
+`SameSite=Lax`; `/cuenta` sin sesión redirige a `/cuenta/ingresar` y las cuatro
+rutas privadas de la API responden 401; el ingreso con contraseña incorrecta y
+con un correo inexistente devuelve exactamente la misma respuesta, byte por
+byte, así que no se puede averiguar qué correos están registrados.
 
 ## Resueltas por código
 
