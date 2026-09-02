@@ -15,6 +15,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -26,22 +27,33 @@ import { spawnSync } from "node:child_process";
 const LF = String.fromCharCode(10);
 const CR = String.fromCharCode(13);
 
-// Tables whose row counts must survive a restore untouched.
-export const DRILL_TABLES = [
-  "vehicle",
-  "vehicle_media",
-  "business_profile",
-  "finance_plan_version",
-  "finance_plan_tier",
-  "promotion",
-  "simulation",
-  "lead",
-  "appraisal",
-  "consignment",
-  "consignment_media",
-  "admin_audit_log",
-  "rate_limit_window",
-];
+// Every table of the schema must survive a restore untouched. The list is
+// derived from the newest Drizzle snapshot instead of being written by hand, so
+// a new migration can never leave a table outside the drill.
+const META_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "drizzle", "meta");
+
+export function readSchemaTables(metaDir = META_DIR) {
+  const snapshots = readdirSync(metaDir)
+    .filter((name) => /^[0-9]{4}_snapshot\.json$/.test(name))
+    .sort();
+  const latest = snapshots.at(-1);
+  if (!latest) {
+    throw new Error("No hay snapshots de Drizzle para derivar las tablas del ensayo.");
+  }
+  const snapshot = JSON.parse(readFileSync(join(metaDir, latest), "utf8"));
+  const tables = Object.keys(snapshot.tables ?? {});
+  if (tables.length === 0) {
+    throw new Error(`El snapshot ${latest} no declara tablas.`);
+  }
+  // The names are interpolated into SQL, so they never leave this alphabet.
+  const invalid = tables.filter((name) => !/^[A-Za-z0-9_]+$/.test(name));
+  if (invalid.length > 0) {
+    throw new Error(`Nombre de tabla no admitido en el snapshot: ${invalid.join(", ")}.`);
+  }
+  return tables.sort();
+}
+
+export const DRILL_TABLES = readSchemaTables();
 
 export function parseArgs(argv) {
   const remote = argv.includes("--remote");

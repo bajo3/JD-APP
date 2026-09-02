@@ -7,6 +7,7 @@ import {
   normalizeDump,
   parseArgs as parseBackupArgs,
   parseCounts,
+  readSchemaTables,
   splitStatements,
 } from "../scripts/d1-backup.mjs";
 import {
@@ -84,6 +85,25 @@ test("restore drill compares the tables that carry the operation", () => {
   assert.ok(DRILL_TABLES.includes("simulation"));
   assert.ok(DRILL_TABLES.includes("lead"));
   assert.ok(DRILL_TABLES.includes("admin_audit_log"));
+});
+
+test("el ensayo compara el esquema completo y no una lista escrita a mano", () => {
+  // La lista sale del snapshot vigente de Drizzle: una migración nueva no puede
+  // dejar una tabla fuera del ensayo sin que esta prueba lo note.
+  assert.deepEqual(DRILL_TABLES, readSchemaTables());
+
+  // Tablas que antes quedaban fuera y sostienen evidencia legal, fotos,
+  // historial del lead y auditoría de precios.
+  for (const table of [
+    "consent",
+    "appraisal_media",
+    "lead_event",
+    "lead_interest",
+    "vehicle_price_history",
+    "promotion_vehicle",
+  ]) {
+    assert.ok(DRILL_TABLES.includes(table), `${table} quedó fuera del ensayo de restauración`);
+  }
 });
 
 test("wrangler JSON output is read defensively", () => {
