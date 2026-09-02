@@ -41,9 +41,20 @@ confirmación de una operación rechaza la promoción que cambió
 (`tests/domain-promotions.test.mjs`, `tests/api-simulation-integrity.test.mjs`).
 
 **10. Flujo mobile completo desde 320 px.**
-Verificado en el navegador a 320 px: ninguna de las superficies públicas
-provoca desplazamiento horizontal y los blancos táctiles llegan a 44 px.
-Cada página abre con "Saltar al contenido" y expone foco visible.
+Verificado en el navegador a 320 px sobre las nueve superficies públicas —
+portada, stock, ficha, buscador, tasación, oferta, contacto y las dos pantallas
+de cuenta—: ninguna provoca desplazamiento horizontal y ningún control queda por
+debajo de 44 px, contando el `label` cuando es el que recibe el toque. Cada
+página abre con "Saltar al contenido" y expone foco visible.
+
+La medición del 1 de septiembre de 2026 desmintió la versión anterior de esta
+línea, que daba los 44 px por cumplidos en todas partes. Cinco controles no
+llegaban: el `select` de orden del stock medía 16 px sin label que lo
+envolviera, el enlace de marca 39, "Volver al stock" 20, "Ver todos" 30 —en
+móvil su texto se oculta y sólo queda la flecha— y el enlace entre alta e
+ingreso de cuenta 15. Los cinco quedaron corregidos por CSS, sin tocar
+marcado ni reglas de negocio; los checkboxes de plazos y usado ya cumplían a
+través de su `label` de 44 y 53 px.
 
 **11. Backups y restauración ensayados.**
 `npm run db:drill` exporta la base, la restaura en una base descartable y
