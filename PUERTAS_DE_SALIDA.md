@@ -173,6 +173,30 @@ Lo que sigue pendiente del negocio para habilitarla:
 - Definir si el precio esperado por el dueño se muestra al equipo tal cual se
   recibe (hoy es orientativo y nunca se publica).
 
+## Base de demostracion reproducible
+
+La prueba comercial de punta a punta necesita una base DEMO fresca y hasta hoy
+no habia comando para dejarla asi. `npm run db:seed` vuelve a sellar el stock,
+deja un tarifario vigente y una oferta con vencimiento a 23 horas, todo marcado
+como ficticio; `--dry-run` imprime el SQL y la base alojada exige
+`--remote --confirm-demo`.
+
+Importa porque el motor degrada a "consultar disponibilidad" cualquier unidad
+cuyo dato supere el umbral de frescura del perfil (1440 minutos). Sobre una base
+sembrada dias atras, las cuatro unidades responden `vehicle_snapshot_not_current`
+y el recorrido no se puede mostrar: la respuesta es correcta y la demostracion es
+imposible. Sembrada de nuevo, el motor vuelve a rechazar por razones economicas
+reales —`monthly_payment_exceeded`, `finance_ratio_exceeded`, `above_maximum_finance_amount`—
+y las unidades alcanzables aparecen.
+
+Recorrido verificado el 1 de septiembre de 2026 contra el Worker real con esa
+base: busqueda con resultados alcanzables; alta de simulacion 201, replay con la
+misma clave y el mismo comando 200 con identico codigo, y misma clave con otro
+comando 409 `OPERATION_CHANGED` sin escribir; pagina publica del snapshot y API
+con los mismos importes —cuota, precio y saldo— y el aviso DEMO; lead con
+contexto 201 y replay idempotente; handoff 409 `WHATSAPP_NOT_CONFIGURED` porque el
+perfil sigue sin numero confirmado, con `whatsappE164: null` en la API.
+
 ## Nota de entorno
 
 `npm start` (`vinext start`) falla en Windows con `ERR_UNSUPPORTED_ESM_URL_SCHEME`.

@@ -13,6 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/d1-migrate.mjs",
+    "db:seed": "node scripts/seed-demo-d1.mjs",
     "db:backup": "node scripts/d1-backup.mjs",
     "db:drill": "node scripts/d1-backup.mjs --drill"
   },

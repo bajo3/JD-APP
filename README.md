@@ -50,9 +50,24 @@ npx wrangler dev --config dist/server/wrangler.json --port 8788 --persist-to .wr
 Antes de reconstruir, detener el preview y los procesos `workerd`: con el
 servidor corriendo, `npm run build` falla con `EPERM` al limpiar `dist`.
 
-Para datos demo locales, usar las fixtures incluidas por el proyecto y el
-seed/local data access configurado en `db/` y `lib/`; no usar estos datos como
-fuente comercial. Las migraciones Drizzle se generan con:
+Para mostrar el recorrido completo hace falta una base DEMO fresca. El motor
+degrada a "consultar disponibilidad" cualquier unidad cuyo dato supere el umbral
+de frescura del perfil (`stock_freshness_minutes`, hoy 1440 minutos), asi que una
+base sembrada dias atras devuelve todo como no alcanzable —correcto, pero no se
+puede demostrar—. El seed vuelve a sellar el stock, deja un tarifario vigente y
+una oferta con vencimiento a 23 horas, todo marcado como ficticio:
+
+```bash
+npm run build
+npm run db:seed        # D1 local
+npm run db:seed -- --dry-run   # imprime el SQL sin ejecutarlo
+```
+
+Sobre la base alojada exige confirmacion explicita
+(`npm run db:seed -- --remote --confirm-demo`). Estos datos nunca son fuente
+comercial: cada condicion se muestra marcada como DEMO.
+
+Las migraciones Drizzle se generan con:
 
 ```bash
 npm run db:generate
