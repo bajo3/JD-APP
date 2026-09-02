@@ -40,8 +40,9 @@ Cada página abre con "Saltar al contenido" y expone foco visible.
 
 **11. Backups y restauración ensayados.**
 `npm run db:drill` exporta la base, la restaura en una base descartable y
-compara trece tablas —incluidas las de consignación y la del limitador de
-abuso—; falla si alguna no coincide. El volcado se reordena para que sea
+compara las veintiocho tablas del esquema —la lista sale del snapshot vigente
+de Drizzle, no de una enumeración escrita a mano, así que una migración nueva no
+puede dejar una tabla afuera— y falla si alguna no coincide. El volcado se reordena para que sea
 restaurable. Ensayado contra la D1 local.
 
 **12. Fotos privadas inaccesibles públicamente.**
@@ -106,6 +107,32 @@ restauración.
 cada acción sensible queda auditada por actor y el acceso falla cerrado sin
 configuración. Los roles por función quedan para una versión posterior
 ([DECISIONES_JDA.md](DECISIONES_JDA.md) #8).
+
+## Cuenta del cliente
+
+Implementada como capacidad **opcional**: ninguna superficie del flujo
+principal la exige y las pruebas lo verifican sobre el código de las páginas
+públicas. Cubre los ítems 201 a 212 de la sección R del relevamiento —alta,
+ingreso, perfil, datos personales, vehículo actual, presupuesto, cuota máxima,
+marcas y tipo preferidos, favoritos, búsquedas guardadas, tasaciones y
+simulaciones—; conversaciones con IA (214) y test drives (213) quedan fuera
+porque no existe el circuito que los produce.
+
+Resuelto por código: contraseña derivada con PBKDF2-HMAC-SHA256 y sal por
+cuenta con iteraciones versionadas y rehash al ingresar; sesión de 256 bits en
+cookie HttpOnly/SameSite=Lax/Secure de la que sólo se persiste el SHA-256;
+respuesta indistinguible ante correo inexistente y contraseña incorrecta;
+bloqueo por intentos y límite por IP; revocación de las demás sesiones al
+cambiar la contraseña; rutas privadas que fallan cerradas.
+
+Pendiente del negocio:
+
+- **No hay recuperación de contraseña ni verificación de correo.** Ambas
+  necesitan un proveedor de envío que JDA no definió
+  ([DECISIONES_JDA.md](DECISIONES_JDA.md) #10). Hoy, quien olvida la contraseña
+  depende de que el equipo lo asista a mano.
+- El texto de consentimiento del alta sigue sin revisión legal, igual que el
+  resto de los textos (#7).
 
 ## Consignación virtual (V1.1)
 

@@ -105,6 +105,10 @@ PANEL_ALLOWED_EMAILS=equipo@dominio-confirmado.example
 # consignación 6/60m, foto de consignación 30/60m.
 RATE_LIMIT_PUBLIC_LEAD=10/10
 RATE_LIMIT_PUBLIC_CONSIGNMENT_PHOTO=30/60
+
+# cuenta del cliente: alta 5/60m, ingreso 12/10m
+RATE_LIMIT_PUBLIC_ACCOUNT_REGISTER=5/60
+RATE_LIMIT_PUBLIC_ACCOUNT_LOGIN=12/10
 ```
 
 No inventar ni publicar un dominio, correo o condición comercial. El panel
@@ -130,12 +134,48 @@ estable con `Retry-After` cuando la ventana se agota.
 - `/simulaciones/[codigo]` — snapshot congelado de una operación simulada,
   de solo lectura y `noindex`; muestra los mismos importes que ve el vendedor.
 - `/offline` — pantalla estática que sirve el service worker sin conexión.
+- `/cuenta/crear` y `/cuenta/ingresar` — alta e ingreso de la cuenta del
+  cliente. `noindex`.
+- `/cuenta` — pantalla privada: datos, preferencias, favoritos, búsquedas
+  guardadas, tasaciones y simulaciones. `noindex, nofollow`.
 
 Rutas V1.1 opcionales (fuera de la navegación V1 hasta aprobación de JDA):
 
 - `/consignar-mi-auto` — consignación virtual: alta atómica con token de
   carga de 256 bits, cinco fotos guiadas con lifecycle recuperable y revisión
   del equipo antes de ofrecer la unidad. `noindex`.
+
+## Cuenta del cliente
+
+La cuenta es **opcional por diseño**: el catálogo, la ficha, la tasación, el
+buscador, la simulación y el contacto funcionan igual sin registrarse, tal como
+exige el plan maestro. Registrarse sólo agrega persistencia de lo que la
+persona ya hizo: datos de contacto, presupuesto y cuota máxima, marcas y tipo
+de vehículo preferidos, vehículo actual declarado, favoritos, búsquedas
+guardadas y el seguimiento de sus tasaciones y simulaciones.
+
+Cómo se protege:
+
+- La contraseña nunca se guarda: se deriva con PBKDF2-HMAC-SHA256 y sal
+  aleatoria por cuenta. Cada fila conserva su número de iteraciones, así que
+  subir el costo no invalida las cuentas viejas: se rehashean al ingresar.
+- La sesión es un token de 256 bits en cookie `HttpOnly`, `SameSite=Lax` y
+  `Secure` fuera de localhost. De D1 sólo sale su SHA-256.
+- El ingreso responde lo mismo ante correo inexistente y contraseña incorrecta,
+  así que no se puede averiguar qué correos están registrados.
+- Ocho intentos fallidos bloquean la cuenta quince minutos; en paralelo, el
+  alta y el ingreso pasan por el limitador por IP.
+- Cambiar la contraseña revoca las demás sesiones abiertas.
+- Las rutas privadas fallan cerradas: sin cookie válida responden 401 sin
+  distinguir si la sesión venció, fue revocada o nunca existió.
+
+La actividad (tasaciones y simulaciones) se muestra sólo cuando la cuenta está
+vinculada a un lead; sin vínculo la pantalla lo dice en lugar de mostrar la de
+otra persona. **Todavía no hay recuperación de contraseña ni verificación de
+correo**: ambas necesitan un proveedor de envío que el negocio no definió (ver
+[DECISIONES_JDA.md](DECISIONES_JDA.md) #10).
+
+Las rutas viven bajo `/api/v1/account/**`.
 
 ## Panel interno
 

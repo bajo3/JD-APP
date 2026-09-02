@@ -21,6 +21,13 @@ La V1 contiene únicamente seis capacidades:
 
 Todo lo demás queda fuera de V1: JD Scan con IA, Mi Garage, JD Passport, realidad aumentada, vista 360°, negociador con IA, chatbot generalista, recomendaciones con IA, automatización comercial avanzada y login de clientes complejo.
 
+La cuenta del cliente se sumó después como capacidad **opcional** y acotada
+(alta con correo y contraseña, preferencias, favoritos, búsquedas guardadas y
+seguimiento de lo ya consultado). No contradice la exclusión de arriba ni la
+regla del punto 8 de la lista de verificación: el flujo principal sigue
+funcionando sin login. Su estado y lo que falta están en
+[PUERTAS_DE_SALIDA.md](PUERTAS_DE_SALIDA.md).
+
 **Consignación virtual (V1.1, opcional):** existe implementada y endurecida
 ([PLAN_CONSIGNACION_VIRTUAL.md](PLAN_CONSIGNACION_VIRTUAL.md)), pero no forma
 parte de la V1: no se navega ni se anuncia hasta que JDA apruebe comisión,
