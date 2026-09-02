@@ -561,6 +561,113 @@ export const consents = sqliteTable(
   (table) => [index("idx_consent_lead_purpose").on(table.leadId, table.purpose)],
 );
 
+/**
+ * Cuenta del cliente. Es opcional por diseño: el catálogo, la tasación, el
+ * buscador y la simulación siguen funcionando sin registrarse, y la cuenta
+ * sólo agrega persistencia de lo que la persona ya hizo.
+ *
+ * Nunca se guarda la contraseña: `password_hash` es la derivación PBKDF2 y
+ * `password_iterations` viaja con cada fila para poder endurecer el costo sin
+ * invalidar las cuentas existentes.
+ */
+export const customerAccounts = sqliteTable(
+  "customer_account",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    passwordAlgorithm: text("password_algorithm").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    passwordSalt: text("password_salt").notNull(),
+    passwordIterations: integer("password_iterations").notNull(),
+    name: text("name").notNull(),
+    phoneNormalized: text("phone_normalized"),
+    leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("ACTIVE"),
+    failedAttempts: integer("failed_attempts").notNull().default(0),
+    lockedUntil: text("locked_until"),
+    lastLoginAt: text("last_login_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_customer_account_email").on(table.email),
+    index("idx_customer_account_lead").on(table.leadId),
+  ],
+);
+
+/** De la sesión sólo se persiste el SHA-256 del token entregado al navegador. */
+export const customerSessions = sqliteTable(
+  "customer_session",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+    lastSeenAt: text("last_seen_at"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_customer_session_token").on(table.tokenHash),
+    index("idx_customer_session_account").on(table.accountId, table.expiresAt),
+  ],
+);
+
+/** Presupuesto, cuota y preferencias declaradas por la persona. */
+export const customerPreferences = sqliteTable("customer_preference", {
+  accountId: text("account_id")
+    .primaryKey()
+    .references(() => customerAccounts.id, { onDelete: "cascade" }),
+  budgetCents: integer("budget_cents"),
+  maxMonthlyPaymentCents: integer("max_monthly_payment_cents"),
+  currency: text("currency").notNull().default("ARS"),
+  preferredMakesJson: text("preferred_makes_json").notNull().default("[]"),
+  preferredBodyTypesJson: text("preferred_body_types_json").notNull().default("[]"),
+  currentVehicleJson: text("current_vehicle_json"),
+  version: integer("version").notNull().default(1),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const customerFavorites = sqliteTable(
+  "customer_favorite",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: "cascade" }),
+    vehicleId: text("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_customer_favorite").on(table.accountId, table.vehicleId),
+    index("idx_customer_favorite_account").on(table.accountId, table.createdAt),
+  ],
+);
+
+export const customerSavedSearches = sqliteTable(
+  "customer_saved_search",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => customerAccounts.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    queryJson: text("query_json").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_customer_saved_search_name").on(table.accountId, table.name),
+    index("idx_customer_saved_search_account").on(table.accountId, table.createdAt),
+  ],
+);
+
 export const adminIdempotency = sqliteTable(
   "admin_idempotency",
   {
@@ -616,3 +723,8 @@ export type ConsignmentMediaRow = typeof consignmentMedia.$inferSelect;
 export type FinancePlanVersionRow = typeof financePlanVersions.$inferSelect;
 export type FinancePlanTierRow = typeof financePlanTiers.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
+export type CustomerAccountRow = typeof customerAccounts.$inferSelect;
+export type CustomerSessionRow = typeof customerSessions.$inferSelect;
+export type CustomerPreferenceRow = typeof customerPreferences.$inferSelect;
+export type CustomerFavoriteRow = typeof customerFavorites.$inferSelect;
+export type CustomerSavedSearchRow = typeof customerSavedSearches.$inferSelect;

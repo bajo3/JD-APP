@@ -13,6 +13,8 @@ export const RATE_LIMIT_RESOURCES = [
   "public.appraisal-photo",
   "public.consignment",
   "public.consignment-photo",
+  "public.account-register",
+  "public.account-login",
 ] as const;
 
 export type RateLimitResource = (typeof RATE_LIMIT_RESOURCES)[number];
@@ -34,6 +36,11 @@ const DEFAULT_LIMITS: Readonly<Record<RateLimitResource, ResourceLimit>> = {
   "public.appraisal-photo": { limit: 30, windowMinutes: 30, env: "RATE_LIMIT_PUBLIC_APPRAISAL_PHOTO" },
   "public.consignment": { limit: 6, windowMinutes: 60, env: "RATE_LIMIT_PUBLIC_CONSIGNMENT" },
   "public.consignment-photo": { limit: 30, windowMinutes: 60, env: "RATE_LIMIT_PUBLIC_CONSIGNMENT_PHOTO" },
+  // El ingreso es el objetivo natural de un ataque de fuerza bruta: el tope por
+  // IP frena el barrido sobre muchas cuentas y el bloqueo por cuenta frena la
+  // insistencia sobre una sola.
+  "public.account-register": { limit: 5, windowMinutes: 60, env: "RATE_LIMIT_PUBLIC_ACCOUNT_REGISTER" },
+  "public.account-login": { limit: 12, windowMinutes: 10, env: "RATE_LIMIT_PUBLIC_ACCOUNT_LOGIN" },
 };
 
 export type RateLimitRuntime = Readonly<{

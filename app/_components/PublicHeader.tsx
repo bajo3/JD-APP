@@ -13,6 +13,7 @@ export function PublicHeader({ profile }: { profile: PublicProfileView | null })
         <Link href="/stock">Stock</Link>
         <Link href="/tasar-mi-usado">Tasá tu usado</Link>
         <Link href="/contacto">Contacto</Link>
+        <Link href="/cuenta">Mi cuenta</Link>
       </nav>
       <a className="header-whatsapp" href={contactHref(profile)}>
         {contactLabel(profile)} <span>↗</span>
