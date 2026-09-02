@@ -57,6 +57,16 @@ Las fotos de tasación viven en R2 privado, se sirven sólo por el binario
 protegido del panel y se les limpian los metadatos antes de guardarlas
 (`tests/media-exif.test.mjs`, `tests/appraisal-media-api.test.mjs`).
 
+Verificado además contra el Worker real el 1 de septiembre de 2026: el alta de
+tasación devuelve 201 con su código, la foto sube 201 y el reintento con la
+misma clave devuelve 200 con el mismo media, y la respuesta pública no expone
+URL, clave ni ruta de R2. Una imagen de 306 bytes con un chunk `tEXt` se
+persistió en 252: los metadatos se limpian en el servidor, no en el cliente.
+Sin sesión del panel, las cuatro rutas administrativas —incluida la que entrega
+los bytes— responden 401, y un identificador de media inventado responde el
+mismo 401 que uno real, así que la autorización ocurre antes de la búsqueda y no
+revela qué existe. El código público por sí solo no entrega nada.
+
 **13. Procedimiento operativo para corregir stock, tasas y ofertas.**
 El panel administra stock, tarifarios y promociones con autorización,
 idempotencia, control de versión y auditoría, sin borrados físicos. Las
@@ -107,7 +117,9 @@ un limitador por IP con ventana fija persistido en D1 (`rate_limit_window`),
 sin contadores en memoria del Worker. Responde 429 estable con `Retry-After`,
 el tope y la ventana se ajustan por entorno sin desplegar código
 (`tests/rate-limit.test.mjs`) y la tabla entra en el backup y el ensayo de
-restauración.
+restauración. Comprobado en el Worker real: superado el tope de altas
+de tasación, la siguiente responde 429 con `Retry-After: 121` y el cuerpo
+estable `RATE_LIMITED`.
 
 **Permisos.** La V1 usa una única allowlist de administradores
 (`PANEL_ALLOWED_EMAILS`): todos los correos habilitados operan todo el panel,
