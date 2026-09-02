@@ -4,7 +4,11 @@ import {
 } from "@/lib/application/index.mjs";
 import type { DataAccess } from "./data-access";
 import { ApiError } from "./api";
-import { financeRulesetVersion, requireCurrentFinancePlans } from "./finance-policy";
+import {
+  financeRulesetVersion,
+  isFinanceableVehicle,
+  requireCurrentFinancePlans,
+} from "./finance-policy";
 
 export async function applicationDependencies(access: DataAccess, now: Date) {
   const fixture = access.source === "fixture" ? createFixtureApplicationRecords() : null;
@@ -31,7 +35,9 @@ export async function applicationDependencies(access: DataAccess, now: Date) {
     : Math.max(...(persistedPlans ?? []).map((plan) => plan.comfortablePaymentMarginBps));
   return {
     records: {
-      vehicles,
+      // El motor sólo recibe unidades simulables: una unidad en dólares entre
+      // el stock publicado no puede romper el buscador del resto del catálogo.
+      vehicles: vehicles.filter(isFinanceableVehicle),
       plans,
       promotions: promotion ? [promotion] : [],
       rulesetVersion,

@@ -3,10 +3,18 @@ import type { BusinessProfileRow } from "@/db/schema";
 import type { CurrentPromotion, StockVehicle } from "@/lib/data/repositories";
 import { getDataAccess, sourceMeta, type DataSource } from "./data-access";
 import { businessProfileDto, promotionDto, vehicleDto } from "./dto";
+import { isFinanceableCurrency } from "../domain/financing.mjs";
 
 const DISPLAY_TIME_ZONE = "America/Argentina/Buenos_Aires";
 const DEFAULT_STOCK_FRESHNESS_MINUTES = 1_440;
 const VEHICLE_TONES = ["vehicle-blue", "vehicle-silver", "vehicle-graphite"] as const;
+
+export type PublicVehicleImage = Readonly<{
+  url: string;
+  alt: string;
+  width: number;
+  height: number;
+}>;
 
 export type PublicVehicleView = Readonly<{
   id: string;
@@ -17,18 +25,17 @@ export type PublicVehicleView = Readonly<{
   km: string;
   price: string;
   priceCents: number;
+  currency: string;
+  /** Falso cuando el tarifario en pesos no puede cotizar la unidad. */
+  financeable: boolean;
   tone: (typeof VEHICLE_TONES)[number];
   availability: "AVAILABLE_TODAY" | "CHECK_AVAILABILITY";
   availabilityLabel: string;
   updatedAt: string;
   updatedLabel: string;
   demo: boolean;
-  image: Readonly<{
-    url: string;
-    alt: string;
-    width: number;
-    height: number;
-  }> | null;
+  image: PublicVehicleImage | null;
+  images: readonly PublicVehicleImage[];
 }>;
 
 export type PublicPromotionView = Readonly<{
@@ -156,16 +163,26 @@ function publicVehicle(
     dto.availability === "AVAILABLE_TODAY"
       ? "AVAILABLE_TODAY"
       : "CHECK_AVAILABILITY";
-  const firstImage = dto.media.find((media) => Boolean(media.url));
+  const name = [dto.make, dto.model, dto.trim].filter(Boolean).join(" ");
+  const images = dto.media
+    .filter((media): media is typeof media & { url: string } => Boolean(media.url))
+    .map((media, index) => ({
+      url: media.url,
+      alt: media.alt || `${name} ${dto.year} — foto ${index + 1}`,
+      width: media.width ?? 1_200,
+      height: media.height ?? 800,
+    }));
   return {
     id: dto.id,
     slug: dto.slug,
     type: dto.bodyType.toUpperCase(),
-    name: [dto.make, dto.model, dto.trim].filter(Boolean).join(" "),
+    name,
     year: String(dto.year),
     km: `${new Intl.NumberFormat("es-AR").format(dto.mileageKm)} km`,
-    price: formatArs(dto.price.cents),
+    price: formatMoney(dto.price.cents, dto.price.currency),
     priceCents: dto.price.cents,
+    currency: dto.price.currency,
+    financeable: isFinanceableCurrency(dto.price.currency),
     tone: toneFor(dto.id),
     availability,
     availabilityLabel:
@@ -175,14 +192,8 @@ function publicVehicle(
     updatedAt: dto.lastSyncedAt ?? dto.updatedAt,
     updatedLabel: formatUpdated(dto.lastSyncedAt ?? dto.updatedAt),
     demo,
-    image: firstImage?.url
-      ? {
-          url: firstImage.url,
-          alt: firstImage.alt || `${[dto.make, dto.model, dto.trim].filter(Boolean).join(" ")} ${dto.year}`,
-          width: firstImage.width ?? 1_200,
-          height: firstImage.height ?? 800,
-        }
-      : null,
+    image: images[0] ?? null,
+    images,
   };
 }
 
@@ -195,7 +206,10 @@ function publicPromotion(
   const dto = promotionDto(row, now);
   const vehicle = vehicles.find((item) => dto.vehicleIds.includes(item.id)) ?? null;
   const discount = Math.max(0, dto.discountCents);
-  const normalPriceCents = vehicle?.priceCents ?? null;
+  // El beneficio se publica en pesos: sobre una unidad cotizada en otra moneda
+  // no se muestra un precio promocional en lugar de restar importes mezclados.
+  const priceable = vehicle && isFinanceableCurrency(vehicle.currency) ? vehicle : null;
+  const normalPriceCents = priceable?.priceCents ?? null;
   const effectivePriceCents =
     normalPriceCents === null ? null : Math.max(0, normalPriceCents - discount);
   return {
@@ -259,9 +273,17 @@ function toneFor(id: string): PublicVehicleView["tone"] {
 }
 
 function formatArs(cents: number): string {
+  return formatMoney(cents, "ARS");
+}
+
+/**
+ * Formatea el importe en su propia moneda. Las unidades importadas se publican
+ * como las cotiza el negocio (USD) y nunca se convierten a pesos.
+ */
+function formatMoney(cents: number, currency: string): string {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
-    currency: "ARS",
+    currency,
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }

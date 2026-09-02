@@ -1,4 +1,5 @@
 import type { StockRepository } from "@/lib/data/repositories";
+import { isFinanceableCurrency } from "../domain/financing.mjs";
 
 export type FinderVehicleContext = Readonly<{
   id: string;
@@ -22,6 +23,9 @@ export async function resolveFinderVehicleContext(
 
   const vehicle = await stock.findBySlug(slug);
   if (!vehicle || vehicle.status !== "AVAILABLE") return null;
+  // Una unidad cotizada en dólares no se preselecciona: el buscador calcula
+  // cuotas contra el tarifario en pesos y no hay tipo de cambio confirmado.
+  if (!isFinanceableCurrency(vehicle.currency)) return null;
 
   return {
     id: vehicle.id,

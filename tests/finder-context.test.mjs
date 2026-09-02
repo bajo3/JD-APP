@@ -21,6 +21,7 @@ test("finder context resolves identity only from an AVAILABLE server record", as
     model: "Corolla",
     trim: "XEI",
     status: "AVAILABLE",
+    currency: "ARS",
   });
 
   const result = await resolveFinderVehicleContext(
@@ -44,6 +45,7 @@ test("finder context ignores malformed, repeated and unavailable URL hints", asy
     model: "Sandero",
     trim: null,
     status: "ARCHIVED",
+    currency: "ARS",
   });
   const malformed = stockReturning(null);
 
@@ -52,4 +54,19 @@ test("finder context ignores malformed, repeated and unavailable URL hints", asy
   assert.deepEqual(malformed.calls, []);
   assert.equal(await resolveFinderVehicleContext("unidad-archivada", unavailable), null);
   assert.deepEqual(unavailable.calls, ["unidad-archivada"]);
+});
+
+test("finder context ignores a unit quoted in a currency the tarifario cannot price", async () => {
+  const usd = stockReturning({
+    id: "vehicle-3",
+    slug: "baic-bj-30-4x4-2026",
+    make: "BAIC",
+    model: "BJ 30",
+    trim: "4X4",
+    status: "AVAILABLE",
+    currency: "USD",
+  });
+
+  assert.equal(await resolveFinderVehicleContext("baic-bj-30-4x4-2026", usd), null);
+  assert.deepEqual(usd.calls, ["baic-bj-30-4x4-2026"]);
 });

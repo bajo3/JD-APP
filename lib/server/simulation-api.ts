@@ -17,6 +17,7 @@ import {
   rethrowApplicationError,
 } from "./affordability";
 import { getDataAccess, sourceMeta, type DataAccess } from "./data-access";
+import { isFinanceableVehicle } from "./finance-policy";
 import { simulationDto } from "./dto";
 
 const REQUEST_FIELDS = new Set([
@@ -205,6 +206,13 @@ export async function createSimulationResponse(
     const vehicle = await access.stock.findBySlug(command.vehicleSlug);
     if (!vehicle || vehicle.id !== command.vehicleId) {
       throw new ApiError(404, "VEHICLE_NOT_FOUND", "El vehículo no está disponible.");
+    }
+    if (!isFinanceableVehicle(vehicle)) {
+      throw new ApiError(
+        409,
+        "VEHICLE_NOT_FINANCEABLE",
+        "Esta unidad se publica en dólares y su financiación se cotiza en el salón.",
+      );
     }
     if (vehicle.priceValidUntil && Date.parse(vehicle.priceValidUntil) <= now.getTime()) {
       throw new ApiError(

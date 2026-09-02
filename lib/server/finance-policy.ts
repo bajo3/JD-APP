@@ -1,3 +1,5 @@
+import { isFinanceableCurrency } from "../domain/financing.mjs";
+
 export function requireCurrentFinancePlans<T>(
   plans: readonly T[] | null | undefined,
   unavailable: () => Error,
@@ -10,4 +12,8 @@ export function requireCurrentFinancePlans<T>(
 
 export function financeRulesetVersion(plans: ReadonlyArray<{ version: string }>): string {
   return `d1:${plans.map((plan) => plan.version).sort().join("+")}`;
+}
+
+export function isFinanceableVehicle(vehicle: { currency: string }): boolean {
+  return isFinanceableCurrency(vehicle.currency);
 }

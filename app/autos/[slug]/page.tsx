@@ -3,9 +3,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { FavoriteButton } from "../../_components/AccountActions";
 import { contactHref } from "../../_components/contact";
 import { VehicleJsonLd } from "../../_components/JsonLd";
 import { PublicShell } from "../../_components/PublicShell";
+import { VehicleGallery } from "../../_components/VehicleGallery";
+import { readFavoriteContext } from "@/lib/server/account-api";
 import { getPublicVehicleDetail } from "@/lib/server/public-data";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +57,7 @@ export default async function VehicleDetail({ params }: VehicleDetailProps) {
   const vehicle = data.vehicle;
   if (!vehicle) notFound();
   const image = vehicle.image;
+  const favorite = await readFavoriteContext((await headers()).get("cookie"), vehicle.id);
 
   const message = `Hola, quiero consultar por el ${vehicle.name} ${vehicle.year}.`;
   return (
@@ -61,10 +65,19 @@ export default async function VehicleDetail({ params }: VehicleDetailProps) {
       <main id="contenido" className="public-page detail-page">
         <a className="back-link" href="/stock">← Volver al stock</a>
         <div className="detail-layout">
-          <div className={`detail-image ${vehicle.tone}`}>
-            <span>{vehicle.type}</span>
-            {image ? <Image className="detail-real-image" src={image.url} alt={image.alt} width={image.width} height={image.height} unoptimized /> : <div className="detail-car" aria-hidden="true"><i/><i/></div>}
-          </div>
+          {vehicle.images.length > 1 ? (
+            <VehicleGallery
+              images={vehicle.images}
+              tone={vehicle.tone}
+              type={vehicle.type}
+              slug={vehicle.slug}
+            />
+          ) : (
+            <div className={`detail-image ${vehicle.tone}`}>
+              <span>{vehicle.type}</span>
+              {image ? <Image className="detail-real-image" src={image.url} alt={image.alt} width={image.width} height={image.height} unoptimized /> : <div className="detail-car" aria-hidden="true"><i/><i/></div>}
+            </div>
+          )}
           <div className="detail-copy">
             <p className="eyebrow">UNIDAD PUBLICADA</p>
             <h1>{vehicle.name}</h1>
@@ -73,18 +86,35 @@ export default async function VehicleDetail({ params }: VehicleDetailProps) {
             <p>{vehicle.availabilityLabel}. {vehicle.updatedLabel}.</p>
             {data.demo ? <p className="detail-meta">Dato de demostración: no representa una publicación comercial real.</p> : null}
             <p>Coordiná una visita para confirmar la unidad, su documentación y las condiciones vigentes.</p>
+            {vehicle.financeable ? null : (
+              <p className="detail-meta">
+                Unidad cotizada en dólares: la financiación no se simula en la
+                web porque el tarifario se publica en pesos. Consultá las
+                condiciones vigentes con un vendedor.
+              </p>
+            )}
             <div className="detail-actions">
-              <Link
-                className="primary-button"
-                href={`/que-auto-me-llevo?vehiculo=${encodeURIComponent(vehicle.slug)}`}
-              >
-                Simular esta unidad <span>→</span>
-              </Link>
+              <FavoriteButton
+                vehicleId={vehicle.id}
+                slug={vehicle.slug}
+                initiallySaved={favorite.saved}
+                signedIn={favorite.signedIn}
+              />
+              {vehicle.financeable ? (
+                <Link
+                  className="primary-button"
+                  href={`/que-auto-me-llevo?vehiculo=${encodeURIComponent(vehicle.slug)}`}
+                >
+                  Simular esta unidad <span>→</span>
+                </Link>
+              ) : null}
               <a
-                className="context-secondary-link"
+                className={vehicle.financeable ? "context-secondary-link" : "primary-button"}
                 href={contactHref(data.profile, message)}
               >
-                {data.profile?.whatsappE164 ? "Consultar por WhatsApp" : "Dejar una consulta"} <span>↗</span>
+                {vehicle.financeable
+                  ? data.profile?.whatsappE164 ? "Consultar por WhatsApp" : "Dejar una consulta"
+                  : "Consultar financiación"} <span>{vehicle.financeable ? "↗" : "→"}</span>
               </a>
             </div>
           </div>

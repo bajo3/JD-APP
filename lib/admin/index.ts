@@ -36,6 +36,12 @@ export type PromotionStatus =
 /** T0 = preliminar/remota; T1 = revisión humana con evidencia suficiente. */
 export type CertaintyLevel = "T0" | "T1";
 export type FinancePricingKind = "french" | "coefficient" | "table";
+/**
+ * Moneda de publicación de una unidad. El tarifario financiero se emite en ARS,
+ * así que sólo las unidades en pesos son simulables; las cotizadas en dólares se
+ * publican con su precio real y la financiación se cotiza en el salón.
+ */
+export type VehicleCurrency = "ARS" | "USD";
 
 export interface AdminActor {
   userId: string;
@@ -63,7 +69,7 @@ export interface AdminVehicleRecord {
   year: number;
   mileageKm: number;
   priceCents: number;
-  currency: "ARS";
+  currency: VehicleCurrency;
   priceValidUntil: string | null;
   bodyType: string;
   fuelType: string;
@@ -473,6 +479,13 @@ function idempotencyKey(value: unknown): string {
   return key;
 }
 
+function vehicleCurrency(value: unknown): VehicleCurrency {
+  if (value !== "ARS" && value !== "USD") {
+    invalid({ currency: "Las monedas admitidas son ARS y USD." });
+  }
+  return value as VehicleCurrency;
+}
+
 function currency(value: unknown): "ARS" {
   if (value !== "ARS") invalid({ currency: "La moneda admitida es ARS." });
   return "ARS";
@@ -650,7 +663,7 @@ export interface CreateVehicleInput {
   year: number;
   mileageKm: number;
   priceCents: number;
-  currency: "ARS";
+  currency: VehicleCurrency;
   priceValidUntil?: string | null;
   bodyType: string;
   fuelType: string;
@@ -678,7 +691,7 @@ function normalizedVehicle(
     year: safeInteger(input.year, "year", 1900, date.getUTCFullYear() + 1),
     mileageKm: safeInteger(input.mileageKm, "mileageKm", 0, 5_000_000),
     priceCents: ars(input.priceCents, "priceCents"),
-    currency: currency(input.currency),
+    currency: vehicleCurrency(input.currency),
     priceValidUntil: input.priceValidUntil ? isoDate(input.priceValidUntil, "priceValidUntil") : null,
     bodyType: requiredString(input.bodyType, "bodyType", 80),
     fuelType: requiredString(input.fuelType, "fuelType", 80),
@@ -753,7 +766,7 @@ function normalizeVehiclePatch(
   if (patch.year !== undefined) output.year = safeInteger(patch.year, "year", 1900, now(dependencies).date.getUTCFullYear() + 1);
   if (patch.mileageKm !== undefined) output.mileageKm = safeInteger(patch.mileageKm, "mileageKm", 0, 5_000_000);
   if (patch.priceCents !== undefined) output.priceCents = ars(patch.priceCents, "priceCents");
-  if (patch.currency !== undefined) output.currency = currency(patch.currency);
+  if (patch.currency !== undefined) output.currency = vehicleCurrency(patch.currency);
   if (patch.priceValidUntil !== undefined) output.priceValidUntil = patch.priceValidUntil ? isoDate(patch.priceValidUntil, "priceValidUntil") : null;
   for (const key of ["bodyType", "fuelType", "transmission", "color", "source"] as const) {
     if (patch[key] !== undefined) output[key] = requiredString(patch[key], key, 100);
@@ -798,7 +811,7 @@ function assertPublishableVehicle(record: AdminVehicleRecord, at: Date): void {
   if (!Number.isSafeInteger(record.year)) missing.push("year");
   if (!Number.isSafeInteger(record.mileageKm)) missing.push("mileageKm");
   if (!Number.isSafeInteger(record.priceCents) || record.priceCents <= 0) missing.push("priceCents");
-  if (record.currency !== "ARS") missing.push("currency");
+  if (record.currency !== "ARS" && record.currency !== "USD") missing.push("currency");
   if (!record.bodyType || !record.fuelType || !record.transmission) missing.push("basicDetails");
   if (record.priceValidUntil && new Date(record.priceValidUntil).getTime() <= at.getTime()) missing.push("priceValidUntil");
   if (missing.length > 0) invalid({ vehicle: `Faltan datos publicables: ${missing.join(", ")}.` });
