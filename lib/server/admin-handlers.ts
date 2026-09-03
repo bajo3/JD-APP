@@ -97,6 +97,40 @@ export function adminVehicles(request: Request): Promise<Response> {
   });
 }
 
+/**
+ * Guarda qué compradores estaban esperando una unidad que se acaba de
+ * publicar. Nunca hace fallar la publicación: si el cruce falla, la unidad
+ * queda publicada igual y el panel se queda sin esas coincidencias hasta el
+ * próximo intento; al revés sería peor.
+ */
+async function recordDemandMatches(vehicle: {
+  id: string;
+  make: string;
+  model: string;
+  year: number;
+  priceCents: number;
+  currency: string;
+  mileageKm: number;
+}): Promise<void> {
+  try {
+    const { matchVehicleAgainstDemands } = await import("./demand-matching-service");
+    await matchVehicleAgainstDemands({
+      id: vehicle.id,
+      make: vehicle.make,
+      model: vehicle.model,
+      year: vehicle.year,
+      priceCents: vehicle.priceCents,
+      currency: vehicle.currency,
+      mileageKm: vehicle.mileageKm,
+    });
+  } catch (error) {
+    console.error("demand_match_failed", {
+      vehicleId: vehicle.id,
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
+}
+
 export function adminVehicle(request: Request, id: string): Promise<Response> {
   return adminApiRoute(request, async (actor) => {
     const safeId = resourceId(id);
@@ -107,11 +141,16 @@ export function adminVehicle(request: Request, id: string): Promise<Response> {
       const nextStatus = payload.action === "archive"
         ? "ARCHIVED"
         : requiredString(payload, "nextStatus", { max: 30 });
-      return adminData(await transitionAdminVehicle(dependencies(actor), {
+      const vehicle = await transitionAdminVehicle(dependencies(actor), {
         id: safeId,
         expectedVersion: version,
         nextStatus: nextStatus as VehicleStatus,
-      }));
+      });
+      // Publicar una unidad es el momento en que se sabe si alguien la estaba
+      // esperando. Las coincidencias quedan guardadas para el panel; no le
+      // llega nada a ningún cliente hasta que una persona lo decide.
+      if (vehicle.status === "AVAILABLE") await recordDemandMatches(vehicle);
+      return adminData(vehicle);
     }
     const patch = payload.patch && typeof payload.patch === "object" && !Array.isArray(payload.patch)
       ? payload.patch as Record<string, unknown>
