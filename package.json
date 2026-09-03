@@ -15,9 +15,11 @@
     "db:migrate": "node scripts/d1-migrate.mjs",
     "db:seed": "node scripts/seed-demo-d1.mjs",
     "db:backup": "node scripts/d1-backup.mjs",
-    "db:drill": "node scripts/d1-backup.mjs --drill"
+    "db:drill": "node scripts/d1-backup.mjs --drill",
+    "stock:sync": "node scripts/stock-sync.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.123.0",
     "drizzle-orm": "0.45.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"

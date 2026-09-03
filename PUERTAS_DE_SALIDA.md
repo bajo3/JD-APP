@@ -87,10 +87,21 @@ migraciones y el backup tienen comandos repetibles documentados en el README.
 
 **1. Fuente de stock y umbral de frescura.**
 El umbral vive en el perfil del negocio (`stock_freshness_minutes`, hoy 1440) y
-la web degrada a "consultar disponibilidad" cuando el dato envejece. Falta que
-JDA confirme el umbral y de dónde sale el stock: hoy se carga por el panel y no
-hay adaptador de sincronización externa (las tablas `external_stock_mapping` y
-`stock_sync_run` existen, sin proceso que las use).
+la web degrada a "consultar disponibilidad" cuando el dato envejece.
+
+Ya existe el adaptador de sincronización externa: `npm run stock:sync` cruza la
+planilla publicada de JD-Auto (precio y moneda), Supabase (identidad de la
+unidad y sus fotos) y el disco local (originales), y deja su corrida auditada
+en `stock_sync_run` y el mapeo en `external_stock_mapping`. Corrida el 3 de
+septiembre de 2026 contra las tres fuentes reales: 57 unidades en la planilla,
+39 activas en JD-Auto, 10 publicables con 12 fotos cada una; las 47 restantes
+quedaron rechazadas con su motivo (sin ficha en JD-Auto, sin año informado).
+Verificado en el navegador contra el Worker real: la ficha muestra las fotos
+del salón de JDA, no un marcador de posición.
+
+Falta que JDA confirme el umbral de frescura y decida si esta sincronización
+corre a demanda o con una cadencia programada; hoy es un comando manual, no un
+proceso continuo.
 
 **2. Planes financieros reales cargados y vigentes.**
 El motor lee tarifarios versionados de D1 y rechaza operar sin uno vigente. El

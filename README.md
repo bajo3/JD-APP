@@ -67,6 +67,33 @@ Sobre la base alojada exige confirmacion explicita
 (`npm run db:seed -- --remote --confirm-demo`). Estos datos nunca son fuente
 comercial: cada condicion se muestra marcada como DEMO.
 
+### Stock real desde JD-Auto
+
+`npm run stock:sync` reemplaza el stock DEMO por unidades reales, cruzando tres
+fuentes del proyecto hermano JD-Auto (por defecto `../JD-Auto` junto a este
+repositorio; `--jd-auto <ruta>` para otra ubicacion): la planilla publicada es
+la verdad del precio y la moneda, Supabase aporta la identidad de la unidad, y
+el disco local las fotos originales. Una unidad sin precio legible, sin
+moneda declarada, sin año, sin kilometraje, sin version o sin fotos originales
+se rechaza con su motivo y no se publica — el comando imprime la lista
+completa de publicables y de rechazadas.
+
+```bash
+npm run build
+npm run stock:sync -- --dry-run     # imprime el resultado sin escribir
+npm run stock:sync                  # publica en la D1 y el R2 locales
+```
+
+`--photos <n>` cambia el tope de fotos por unidad (12 por defecto, hasta 40);
+`--skip-photos` sincroniza solo los datos. Sobre el entorno alojado exige
+`--remote --confirm-remote`. Cada corrida es idempotente por el hash del
+payload: una unidad sin cambios no vuelve a escribirse ni a resubir fotos.
+
+El stock DEMO no se borra: al publicar la primera unidad real conviene
+archivar manualmente las unidades `DEMO_SEED` desde el panel (o con
+`UPDATE vehicle SET status='ARCHIVED' WHERE source='DEMO_SEED'`) para que la
+web no mezcle datos reales con ficticios.
+
 Las migraciones Drizzle se generan con:
 
 ```bash
@@ -124,6 +151,19 @@ RATE_LIMIT_PUBLIC_CONSIGNMENT_PHOTO=30/60
 # cuenta del cliente: alta 5/60m, ingreso 12/10m
 RATE_LIMIT_PUBLIC_ACCOUNT_REGISTER=5/60
 RATE_LIMIT_PUBLIC_ACCOUNT_LOGIN=12/10
+
+# puente de mensajería (Zernio): secreto del webhook, mínimo 16 caracteres.
+# Sin él, POST /api/v1/webhooks/zernio responde 503 y no acepta ningún evento.
+ZERNIO_WEBHOOK_SECRET=
+
+# clave de API del puente para enviar. Sin ella no sale ningún mensaje.
+ZERNIO_API_KEY=
+# opcional; por defecto https://zernio.com/api
+ZERNIO_API_BASE_URL=
+
+# asesor conversacional (Claude). Sin clave, el asesor responde 503 y la
+# conversación queda en atención humana.
+ANTHROPIC_API_KEY=
 ```
 
 No inventar ni publicar un dominio, correo o condición comercial. El panel
@@ -136,6 +176,12 @@ Las mutaciones públicas (búsquedas, simulaciones, leads, handoffs, tasaciones,
 consignaciones y sus fotos) pasan por un limitador de abuso por IP con ventana
 fija persistido en D1 —sin estado en memoria del Worker— que responde `429`
 estable con `Retry-After` cuando la ventana se agota.
+
+`POST /api/v1/webhooks/zernio` queda fuera de ese limitador a propósito: el
+proveedor entrega desde un puñado de direcciones y un tope por IP castigaría
+una ráfaga legítima de eventos. Lo que autoriza ahí es la firma
+`X-Zernio-Signature` (HMAC-SHA256 del cuerpo crudo), comparada en tiempo
+constante; sin secreto configurado el endpoint responde `503` y no acepta nada.
 
 ## Rutas públicas
 
