@@ -141,9 +141,12 @@ Reglas que hace cumplir hoy, cubiertas por `tests/zernio-webhook.test.mjs`:
   plataforma y **no se inventa un teléfono**: la conversación queda sin lead
   hasta que una persona la convierta.
 
-Falta de F1: bajar a R2 privado las fotos que llegan por DM —el webhook no trae
-`refreshUrl`— y el alta de cuentas del canal desde el panel (hoy la fila de
-`channel_account` se carga a mano).
+El alta de cuentas del canal ya se hace desde el panel —tarjeta "Cuentas
+conectadas" en `/panel/conversaciones`, idempotente por
+`(provider, external_account_id)`—; ya no hace falta cargar la fila a mano.
+
+Falta de F1: bajar a R2 privado las fotos que llegan por DM —el webhook no
+trae `refreshUrl`—.
 
 Al final de F1, sin una línea de IA, **el CRM unificado ya funciona**: todo
 mensaje de WhatsApp, Instagram o Messenger aparece en el panel, asignado,
