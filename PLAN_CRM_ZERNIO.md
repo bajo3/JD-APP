@@ -113,7 +113,18 @@ código, no por prompt:
 el evento crudo y lo normaliza a conversación + mensaje + lead + evento de lead
 en un único batch D1. Idempotente por `id` del evento; un evento fallido se
 puede reprocesar y uno ya procesado no. Entra al backup y al ensayo de
-restauración (32 tablas).
+restauración (35 tablas).
+
+Verificado el 3 de septiembre de 2026 contra el Worker real con Wrangler, la D1
+local migrada y una firma HMAC calculada de verdad (no el mock de las
+pruebas): sin cuenta dada de alta, el evento entra como `IGNORED` con motivo
+`UNKNOWN_ACCOUNT` en `channel_webhook_event` y no crea nada más; con la cuenta
+cargada, el mismo evento crea el lead con el teléfono normalizado a E.164, la
+conversación en `OPEN` enlazada al lead y el mensaje, y el reintento con el
+mismo `id` responde `replayed` sin duplicar ninguna fila. Sigue sin probarse
+contra una cuenta Zernio real (`accounts_list` sigue en `No accounts
+connected`): esto confirma que el circuito local D1/Worker funciona, no que
+Zernio vaya a entregar el mismo payload.
 
 Reglas que hace cumplir hoy, cubiertas por `tests/zernio-webhook.test.mjs`:
 
