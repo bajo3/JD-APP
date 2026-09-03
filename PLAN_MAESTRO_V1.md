@@ -34,6 +34,19 @@ parte de la V1: no se navega ni se anuncia hasta que JDA apruebe comisión,
 contrato y retiro de unidad. Las decisiones pendientes viven en
 [DECISIONES_JDA.md](DECISIONES_JDA.md).
 
+**CRM unificado y asesor conversacional (puente Zernio, V1.1, opcional):**
+esto sí toca la exclusión de arriba —el asesor es, en los hechos, un
+negociador con IA por WhatsApp, no sólo "WhatsApp + CRM con contexto"—. Se
+construyó explícitamente por pedido posterior, con la misma disciplina que el
+resto del sistema: la IA no calcula ni recuerda precios, no elige stock, y
+toda cifra que envía sale de una llamada real al motor y queda congelada en
+una simulación citable. El plan completo, sus fases y sus prerrequisitos
+—cuenta Zernio conectada, número de WhatsApp confirmado, plantillas
+aprobadas, tarifario real— están en
+[PLAN_CRM_ZERNIO.md](PLAN_CRM_ZERNIO.md). Como con consignación, ninguna
+conversación real pasa por acá hasta que esos prerrequisitos estén resueltos:
+mientras falten, el asesor sólo corre contra la base DEMO.
+
 ---
 
 ## 2. Datos del negocio

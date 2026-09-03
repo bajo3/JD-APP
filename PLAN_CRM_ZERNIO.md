@@ -175,12 +175,26 @@ lo que la plataforma cobra o rechaza, cubierto por `tests/inbox-outbound.test.mj
 Falta: las plantillas concretas —que dependen de la aprobación de Meta— y la
 pantalla del panel que dispara todo esto.
 
-### F2 — Bandeja operativa
+### F2 — Bandeja operativa — **cola, hilo y respuesta manual implementados**
 
-Pantalla `/panel/conversaciones`: cola por asignación, aviso de no atendida
-(SLA), respuesta manual desde el panel, seguimiento programado, motivo de
-pérdida. Métricas por canal, vehículo y vendedor sumadas al embudo existente,
-con los no medidos declarados como ya se hace hoy.
+Pantalla `/panel/conversaciones`: cola ordenada por prioridad de SLA —primero
+lo que nadie contestó desde el último mensaje del cliente, de lo más viejo
+esperando a lo más nuevo; después el resto, más reciente primero—, con tres
+franjas explícitas (recién llegada, atender pronto, sin atender) sobre
+umbrales exactos. El cálculo vive en `slaFor()`, función pura y probada aparte
+de la consulta a D1.
+
+`/panel/conversaciones/[id]` muestra el hilo completo y una respuesta manual
+que pasa por el mismo `lib/server/inbox-outbound.ts` que usa el asesor: hace
+cumplir la ventana de 24 horas y el ritmo por destinatario, con la misma
+disciplina de clave de idempotencia estable que ya usan los demás formularios
+del panel. El interruptor de modo (atención humana / asesor) reutiliza
+`escalateToHuman` y `handOverToAdvisor` sin reglas nuevas.
+
+Falta de F2: asignación explícita desde la cola (hoy asignar ocurre al
+escalar, no hay un botón "asigname esta"), seguimiento programado, motivo de
+pérdida, y las métricas por canal/vehículo/vendedor sumadas al embudo
+existente.
 
 ### F3 — Asesor con herramientas — **capa de herramientas implementada**
 
