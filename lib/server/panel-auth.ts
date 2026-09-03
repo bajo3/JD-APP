@@ -31,7 +31,7 @@ export class PanelAccessError extends Error {
   }
 }
 
-type PanelAuthDependencies = {
+export type PanelAuthDependencies = {
   allowedEmails?: string | undefined;
   requireUser?: RequireUser;
 };

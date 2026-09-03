@@ -37,6 +37,7 @@ import {
 import { adminDependencies } from "./admin-adapter";
 import { adminApiRoute, adminData } from "./admin-api";
 import type { AdminApiActor } from "./admin-auth";
+import type { OutboundRuntime } from "./inbox-outbound";
 import {
   ApiError,
   readJsonObject,
@@ -183,6 +184,64 @@ export function adminLead(request: Request, id: string): Promise<Response> {
       assignedTo: typeof payload.assignedTo === "string" ? payload.assignedTo : undefined,
       lostReason: typeof payload.lostReason === "string" ? payload.lostReason : undefined,
     }));
+  });
+}
+
+/**
+ * Respuesta manual desde el panel. Pasa por el mismo circuito de salida que
+ * usa el asesor: hace cumplir la ventana de 24 horas y el ritmo por
+ * destinatario, y deja el saliente citado con quién lo mandó.
+ */
+export function adminConversationReply(
+  request: Request,
+  id: string,
+  runtime: OutboundRuntime = {},
+): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const safeId = resourceId(id);
+    const idempotencyKey = requireIdempotencyKey(request);
+    const payload = await readJsonObject(request);
+    const text = requiredString(payload, "text", { min: 1, max: 4_000 });
+    const { sendOutboundMessage } = await import("./inbox-outbound");
+    const result = await sendOutboundMessage(
+      {
+        conversationId: safeId,
+        text,
+        author: { type: "SELLER", id: actor.email },
+        idempotencyKey,
+      },
+      runtime,
+    );
+    return adminData(result);
+  });
+}
+
+/**
+ * Interruptor de modo (asesor / persona) y asignación desde el panel. Escalar
+ * exige un motivo — se asienta en la línea de tiempo del lead—; devolver la
+ * conversación al asesor se niega si la ventana de 24 horas está cerrada.
+ */
+export function adminConversationHandling(
+  request: Request,
+  id: string,
+  runtime: OutboundRuntime = {},
+): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const safeId = resourceId(id);
+    const payload = await readJsonObject(request);
+    const handling = requiredString(payload, "handling", { max: 10 });
+    const assignTo = typeof payload.assignTo === "string" ? payload.assignTo : undefined;
+    const { escalateToHuman, handOverToAdvisor } = await import("./inbox-outbound");
+    if (handling === "HUMAN") {
+      const reason = requiredString(payload, "reason", { min: 2, max: 200 });
+      await escalateToHuman({ conversationId: safeId, reason, assignTo: assignTo ?? actor.email }, runtime);
+      return adminData({ handling: "HUMAN" });
+    }
+    if (handling === "AI") {
+      await handOverToAdvisor({ conversationId: safeId }, runtime);
+      return adminData({ handling: "AI" });
+    }
+    throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { handling: "invalid_handling" });
   });
 }
 

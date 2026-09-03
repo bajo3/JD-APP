@@ -354,6 +354,127 @@ export class D1ChannelInboxRepository {
   }
 
   /**
+   * Cola de la bandeja para el panel: una fila por conversación abierta, con
+   * el nombre del contacto, el último texto y si está esperando respuesta. No
+   * calcula el SLA acá —eso es responsabilidad del que arma la pantalla, con
+   * un reloj inyectable—; sólo entrega el dato crudo ordenado por prioridad:
+   * primero lo que nadie contestó desde el último mensaje del cliente, de lo
+   * más viejo a lo más nuevo esperando; después el resto, más reciente primero.
+   */
+  async listConversationQueue(limit = 100): Promise<
+    Array<{
+      id: string;
+      platform: string;
+      participantDisplayName: string | null;
+      participantPhoneNormalized: string | null;
+      status: string;
+      handling: string;
+      assignedTo: string | null;
+      leadId: string | null;
+      leadName: string | null;
+      lastInboundAt: string | null;
+      lastOutboundAt: string | null;
+      lastMessageText: string | null;
+      accountDisplayName: string;
+    }>
+  > {
+    const result = await this.d1
+      .prepare(
+        `SELECT c.id, c.platform, c.participant_display_name, c.participant_phone_normalized,
+                c.status, c.handling, c.assigned_to, c.lead_id, l.name AS lead_name,
+                c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
+                (SELECT m.text FROM inbox_message m
+                  WHERE m.conversation_id = c.id
+                  ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT 1) AS last_message_text,
+                CASE
+                  WHEN c.last_inbound_at IS NOT NULL
+                   AND (c.last_outbound_at IS NULL OR c.last_outbound_at < c.last_inbound_at)
+                  THEN 0 ELSE 1
+                END AS waiting_rank
+           FROM inbox_conversation c
+           JOIN channel_account a ON a.id = c.channel_account_id
+           LEFT JOIN lead l ON l.id = c.lead_id
+          WHERE c.status != 'CLOSED'
+          ORDER BY waiting_rank ASC,
+                   CASE WHEN waiting_rank = 0 THEN c.last_inbound_at END ASC,
+                   c.last_inbound_at DESC
+          LIMIT ?`,
+      )
+      .bind(Math.max(1, Math.min(limit, 200)))
+      .all<Record<string, unknown>>();
+    return (result.results ?? []).map((row) => ({
+      id: String(row.id),
+      platform: String(row.platform),
+      participantDisplayName: row.participant_display_name === null ? null : String(row.participant_display_name),
+      participantPhoneNormalized:
+        row.participant_phone_normalized === null ? null : String(row.participant_phone_normalized),
+      status: String(row.status),
+      handling: String(row.handling),
+      assignedTo: row.assigned_to === null ? null : String(row.assigned_to),
+      leadId: row.lead_id === null ? null : String(row.lead_id),
+      leadName: row.lead_name === null ? null : String(row.lead_name),
+      lastInboundAt: row.last_inbound_at === null ? null : String(row.last_inbound_at),
+      lastOutboundAt: row.last_outbound_at === null ? null : String(row.last_outbound_at),
+      lastMessageText: row.last_message_text === null ? null : String(row.last_message_text),
+      accountDisplayName: String(row.account_display_name),
+    }));
+  }
+
+  /**
+   * Una sola fila de la cola, para la pantalla de detalle. Mismas columnas
+   * que `listConversationQueue`, sin traer las demás conversaciones abiertas
+   * sólo para descartarlas.
+   */
+  async findConversationQueueRow(conversationId: string): Promise<{
+    id: string;
+    platform: string;
+    participantDisplayName: string | null;
+    participantPhoneNormalized: string | null;
+    status: string;
+    handling: string;
+    assignedTo: string | null;
+    leadId: string | null;
+    leadName: string | null;
+    lastInboundAt: string | null;
+    lastOutboundAt: string | null;
+    lastMessageText: string | null;
+    accountDisplayName: string;
+  } | null> {
+    const row = await this.d1
+      .prepare(
+        `SELECT c.id, c.platform, c.participant_display_name, c.participant_phone_normalized,
+                c.status, c.handling, c.assigned_to, c.lead_id, l.name AS lead_name,
+                c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
+                (SELECT m.text FROM inbox_message m
+                  WHERE m.conversation_id = c.id
+                  ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT 1) AS last_message_text
+           FROM inbox_conversation c
+           JOIN channel_account a ON a.id = c.channel_account_id
+           LEFT JOIN lead l ON l.id = c.lead_id
+          WHERE c.id = ?`,
+      )
+      .bind(conversationId)
+      .first<Record<string, unknown>>();
+    if (!row) return null;
+    return {
+      id: String(row.id),
+      platform: String(row.platform),
+      participantDisplayName: row.participant_display_name === null ? null : String(row.participant_display_name),
+      participantPhoneNormalized:
+        row.participant_phone_normalized === null ? null : String(row.participant_phone_normalized),
+      status: String(row.status),
+      handling: String(row.handling),
+      assignedTo: row.assigned_to === null ? null : String(row.assigned_to),
+      leadId: row.lead_id === null ? null : String(row.lead_id),
+      leadName: row.lead_name === null ? null : String(row.lead_name),
+      lastInboundAt: row.last_inbound_at === null ? null : String(row.last_inbound_at),
+      lastOutboundAt: row.last_outbound_at === null ? null : String(row.last_outbound_at),
+      lastMessageText: row.last_message_text === null ? null : String(row.last_message_text),
+      accountDisplayName: String(row.account_display_name),
+    };
+  }
+
+  /**
    * Deja el saliente en la bandeja con su autor y la cita de la que salió cada
    * cifra. El webhook `message.sent` llega después y no duplica: la clave
    * única por mensaje del proveedor lo impide.
@@ -550,4 +671,6 @@ export type ChannelInboxRepositoryLike = Pick<
   | "setHandling"
   | "recordConversationEvent"
   | "listRecentMessages"
+  | "listConversationQueue"
+  | "findConversationQueueRow"
 >;
