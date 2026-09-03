@@ -32,6 +32,16 @@ export type ConversationThreadMessage = Readonly<{
   occurredAt: string;
 }>;
 
+export type ChannelAccountRow = Readonly<{
+  id: string;
+  platform: string;
+  externalAccountId: string;
+  displayName: string;
+  status: string;
+  defaultAssignee: string | null;
+  createdAt: string;
+}>;
+
 type Runtime = Readonly<{
   repository?: ChannelInboxRepositoryLike;
   now?: Date;
@@ -135,4 +145,24 @@ export async function getConversationThread(
     },
     messages,
   };
+}
+
+/**
+ * Cuentas del canal para la tarjeta de administración de
+ * `/panel/conversaciones`. Sin ninguna cuenta cargada, el webhook no tiene
+ * a quién enrutar un mensaje entrante.
+ */
+export async function getChannelAccounts(runtime: Runtime = {}): Promise<readonly ChannelAccountRow[]> {
+  await requirePanelUser(undefined, runtime.panelAuth);
+  const repository = runtime.repository ?? new D1ChannelInboxRepository();
+  const rows = await repository.listChannelAccounts();
+  return rows.map((row) => ({
+    id: row.id,
+    platform: row.platform,
+    externalAccountId: row.externalAccountId,
+    displayName: row.displayName,
+    status: row.status,
+    defaultAssignee: row.defaultAssignee,
+    createdAt: row.createdAt,
+  }));
 }

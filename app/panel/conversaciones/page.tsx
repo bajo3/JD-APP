@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getConversationQueue } from "@/lib/server/inbox-panel-data";
+import { getChannelAccounts, getConversationQueue } from "@/lib/server/inbox-panel-data";
+import { ChannelAccountForm } from "../_components/ChannelAccountForm";
 import { PanelShell } from "../_components/PanelShell";
 
 export const dynamic = "force-dynamic";
@@ -21,12 +22,43 @@ const SLA_LABEL: Record<string, string> = {
 };
 
 export default async function ConversacionesPage() {
-  const { rows, waitingCount, lateCount } = await getConversationQueue();
+  const [{ rows, waitingCount, lateCount }, accounts] = await Promise.all([
+    getConversationQueue(),
+    getChannelAccounts(),
+  ]);
   return (
     <PanelShell
       title="Conversaciones"
       subtitle="WhatsApp, Instagram y Messenger en una sola bandeja."
     >
+      <section className="panel-card" aria-labelledby="accounts-title">
+        <div className="panel-card-head">
+          <div>
+            <p className="panel-kicker">CUENTAS DEL CANAL</p>
+            <h2 id="accounts-title">Cuentas conectadas</h2>
+          </div>
+        </div>
+        {accounts.length === 0 ? (
+          <p className="panel-muted">
+            Sin ninguna cuenta cargada, el webhook no tiene a quién enrutar un mensaje entrante: llega y
+            queda archivado como no enrutado.
+          </p>
+        ) : (
+          <ul className="channel-account-list">
+            {accounts.map((account) => (
+              <li key={account.id}>
+                <strong>{PLATFORM_LABEL[account.platform] ?? account.platform}</strong>
+                <span>{account.displayName}</span>
+                <span className={`lead-validity${account.status !== "ACTIVE" ? " is-expired" : ""}`}>
+                  {account.status === "ACTIVE" ? "Activa" : "Pausada"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <ChannelAccountForm />
+      </section>
+
       <section className="panel-card" aria-labelledby="inbox-title">
         <div className="panel-card-head">
           <div>

@@ -45,9 +45,14 @@ registerHooks({
   },
 });
 
-const { slaFor, SLA_SOON_MINUTES, SLA_LATE_MINUTES, getConversationQueue, getConversationThread } = await import(
-  "../lib/server/inbox-panel-data.ts"
-);
+const {
+  slaFor,
+  SLA_SOON_MINUTES,
+  SLA_LATE_MINUTES,
+  getConversationQueue,
+  getConversationThread,
+  getChannelAccounts,
+} = await import("../lib/server/inbox-panel-data.ts");
 
 const NOW = new Date("2026-09-03T12:00:00.000Z");
 
@@ -102,7 +107,7 @@ function panelAuth(user = AUTHORIZED_USER) {
   return { requireUser: async () => user };
 }
 
-function fakeRepository(rows) {
+function fakeRepository(rows, accounts = []) {
   return {
     async listConversationQueue() {
       return rows;
@@ -112,6 +117,9 @@ function fakeRepository(rows) {
     },
     async listRecentMessages() {
       return [{ direction: "incoming", authorType: "CUSTOMER", text: "Hola", occurredAt: NOW.toISOString() }];
+    },
+    async listChannelAccounts() {
+      return accounts;
     },
   };
 }
@@ -183,4 +191,31 @@ test("el hilo trae la conversación encontrada con su SLA", async () => {
   assert.equal(conversation.id, "conv-1");
   assert.equal(conversation.sla, "late");
   assert.equal(messages.length, 1);
+});
+
+test("las cuentas del canal exigen sesión de panel antes de leer nada", async () => {
+  const intruso = panelAuth({ ...AUTHORIZED_USER, email: "intruso@example.com" });
+  await assert.rejects(
+    getChannelAccounts({ repository: fakeRepository([], [{ id: "acc-1" }]), panelAuth: intruso }),
+  );
+});
+
+test("las cuentas del canal se listan tal como las devuelve el repositorio", async () => {
+  const accounts = await getChannelAccounts({
+    repository: fakeRepository([], [
+      {
+        id: "acc-1",
+        platform: "whatsapp",
+        externalAccountId: "zernio-acc-1",
+        displayName: "JDA WhatsApp",
+        status: "ACTIVE",
+        defaultAssignee: "vendedor@jda.test",
+        createdAt: NOW.toISOString(),
+      },
+    ]),
+    panelAuth: panelAuth(),
+  });
+  assert.equal(accounts.length, 1);
+  assert.equal(accounts[0].displayName, "JDA WhatsApp");
+  assert.equal(accounts[0].status, "ACTIVE");
 });

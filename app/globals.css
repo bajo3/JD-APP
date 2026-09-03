@@ -28,3 +28,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .inbox-reply{border-top:1px solid var(--line);padding-top:16px;margin-top:6px}.inbox-handling-switch{display:flex;gap:8px;margin-bottom:14px}.inbox-handling-switch .panel-action{flex:1}
 .inbox-reply-label{display:block;font-size:11px;font-weight:bold;color:var(--muted);margin-bottom:6px}.inbox-reply textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d7dfda;border-radius:7px;font:inherit;font-size:13px;resize:vertical;margin-bottom:10px}
 @media(max-width:560px){.inbox-handling-switch{flex-direction:column}}
+
+.channel-account-list{margin:0 0 16px;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+.channel-account-list li{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #edf0ed}
+.channel-account-list li:first-child{border-top:0}
+.channel-account-list strong{font-size:12px;min-width:80px}
+.channel-account-list span:not(.lead-validity){color:var(--muted);font-size:12px;flex:1}
+.channel-account-form form{display:flex;flex-direction:column;gap:12px;margin-top:14px;max-width:360px}
+.channel-account-form label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:bold;color:var(--muted)}
+.channel-account-form input,.channel-account-form select{padding:9px 11px;border:1px solid #d7dfda;border-radius:7px;font:inherit;font-size:13px;color:var(--ink)}

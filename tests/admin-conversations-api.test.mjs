@@ -46,7 +46,7 @@ registerHooks({
   },
 });
 
-const { adminConversationReply, adminConversationHandling } = await import(
+const { adminConversationReply, adminConversationHandling, adminChannelAccounts } = await import(
   "../lib/server/admin-handlers.ts"
 );
 const { D1ChannelInboxRepository } = await import("../lib/data/channel-inbox-repository.ts");
@@ -261,4 +261,103 @@ test("un modo inválido responde 422 sin tocar la conversación", async () => {
   assert.equal(response.status, 422);
   const row = database.prepare("SELECT handling FROM inbox_conversation WHERE id = 'conv-open'").get();
   assert.equal(row.handling, "HUMAN");
+});
+
+function adminGet(url) {
+  return new Request(url, {
+    headers: {
+      "oai-authenticated-user-id": "seller-1",
+      "oai-authenticated-user-email": "vendedor@jda.test",
+    },
+  });
+}
+
+test("dar de alta una cuenta del canal sin sesión responde 401", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const request = new Request("http://localhost/api/v1/admin/channel-accounts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ platform: "whatsapp", externalAccountId: "acc-2", displayName: "JDA Instagram" }),
+  });
+  const response = await adminChannelAccounts(request, { repository });
+  assert.equal(response.status, 401);
+});
+
+test("dar de alta una cuenta nueva la deja ACTIVE con el vendedor como responsable por defecto", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const request = new Request("http://localhost/api/v1/admin/channel-accounts", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "oai-authenticated-user-id": "seller-1",
+      "oai-authenticated-user-email": "vendedor@jda.test",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    body: JSON.stringify({ platform: "instagram", externalAccountId: "acc-ig-1", displayName: "JDA Instagram" }),
+  });
+  const response = await adminChannelAccounts(request, { repository, now: new Date("2026-09-03T12:00:00.000Z") });
+  assert.equal(response.status, 201);
+  const row = database.prepare(
+    "SELECT platform, display_name, status, default_assignee FROM channel_account WHERE external_account_id = 'acc-ig-1'",
+  ).get();
+  assert.equal(row.platform, "instagram");
+  assert.equal(row.display_name, "JDA Instagram");
+  assert.equal(row.status, "ACTIVE");
+  assert.equal(row.default_assignee, "vendedor@jda.test");
+});
+
+test("reconectar la misma cuenta actualiza en lugar de duplicar", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const body = { platform: "whatsapp", externalAccountId: "acc-1", displayName: "JDA WhatsApp (reconectada)" };
+  const send = () =>
+    adminChannelAccounts(
+      new Request("http://localhost/api/v1/admin/channel-accounts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "oai-authenticated-user-id": "seller-1",
+          "oai-authenticated-user-email": "vendedor@jda.test",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify(body),
+      }),
+      { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    );
+  await send();
+  await send();
+  const rows = database.prepare("SELECT display_name FROM channel_account WHERE external_account_id = 'acc-1'").all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].display_name, "JDA WhatsApp (reconectada)");
+});
+
+test("un platform inválido se rechaza sin escribir nada", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const request = new Request("http://localhost/api/v1/admin/channel-accounts", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "oai-authenticated-user-id": "seller-1",
+      "oai-authenticated-user-email": "vendedor@jda.test",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    body: JSON.stringify({ platform: "carrier-pigeon", externalAccountId: "acc-3", displayName: "Palomas JDA" }),
+  });
+  const response = await adminChannelAccounts(request, { repository });
+  assert.equal(response.status, 422);
+  const row = database.prepare("SELECT id FROM channel_account WHERE external_account_id = 'acc-3'").get();
+  assert.equal(row, undefined);
+});
+
+test("listar cuentas devuelve las cargadas", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const response = await adminChannelAccounts(adminGet("http://localhost/api/v1/admin/channel-accounts"), { repository });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.data.length, 1);
+  assert.equal(body.data[0].externalAccountId, "zernio-acc-1");
 });

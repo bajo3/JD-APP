@@ -35,11 +35,13 @@ import {
   type VehicleStatus,
 } from "@/lib/admin";
 import { adminDependencies } from "./admin-adapter";
-import { adminApiRoute, adminData } from "./admin-api";
+import { adminApiRoute, adminData, optionalEnum, requiredEnum } from "./admin-api";
 import type { AdminApiActor } from "./admin-auth";
+import type { ChannelInboxRepositoryLike } from "@/lib/data/channel-inbox-repository";
 import type { OutboundRuntime } from "./inbox-outbound";
 import {
   ApiError,
+  optionalString,
   readJsonObject,
   requireIdempotencyKey,
   requiredInteger,
@@ -242,6 +244,45 @@ export function adminConversationHandling(
       return adminData({ handling: "AI" });
     }
     throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { handling: "invalid_handling" });
+  });
+}
+
+/**
+ * Alta y listado de cuentas del canal (WhatsApp, Instagram, Messenger,
+ * Telegram, SMS). Sin al menos una cuenta ACTIVE, el webhook no tiene a
+ * quién enrutar un mensaje entrante y lo archiva como no enrutado.
+ */
+export function adminChannelAccounts(
+  request: Request,
+  runtime: { repository?: ChannelInboxRepositoryLike; now?: Date } = {},
+): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const { D1ChannelInboxRepository } = await import("@/lib/data/channel-inbox-repository");
+    const repository = runtime.repository ?? new D1ChannelInboxRepository();
+    if (request.method === "GET") {
+      return adminData(await repository.listChannelAccounts());
+    }
+    requireIdempotencyKey(request);
+    const payload = await readJsonObject(request);
+    const platform = requiredEnum(payload, "platform", [
+      "whatsapp",
+      "instagram",
+      "messenger",
+      "telegram",
+      "sms",
+    ] as const);
+    const now = runtime.now ?? new Date();
+    const result = await repository.createChannelAccount({
+      id: crypto.randomUUID(),
+      provider: "ZERNIO",
+      platform,
+      externalAccountId: requiredString(payload, "externalAccountId", { min: 1, max: 120 }),
+      displayName: requiredString(payload, "displayName", { min: 2, max: 120 }),
+      status: optionalEnum(payload, "status", ["ACTIVE", "PAUSED"] as const) ?? "ACTIVE",
+      defaultAssignee: optionalString(payload, "defaultAssignee", 120) ?? actor.email,
+      updatedAt: now.toISOString(),
+    });
+    return adminData(result, { status: 201 });
   });
 }
 

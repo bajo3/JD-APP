@@ -62,3 +62,28 @@ test("responder exige Idempotency-Key antes de leer el texto", async () => {
   const text = source.indexOf('requiredString(payload, "text"', reply);
   assert.ok(idempotency >= 0 && idempotency < text);
 });
+
+test("la pantalla de conversaciones administra las cuentas del canal antes de listar la cola", async () => {
+  const source = await read("app/panel/conversaciones/page.tsx");
+  const accountsSection = source.indexOf("Cuentas conectadas");
+  const queueSection = source.indexOf("Conversaciones abiertas");
+  assert.ok(accountsSection >= 0 && accountsSection < queueSection);
+  assert.match(source, /ChannelAccountForm/);
+});
+
+test("dar de alta una cuenta manda las cinco plataformas admitidas y una clave de idempotencia estable", async () => {
+  const source = await read("app/panel/_components/ChannelAccountForm.tsx");
+  for (const platform of ["whatsapp", "instagram", "messenger", "telegram", "sms"]) {
+    assert.match(source, new RegExp(`value="${platform}"`));
+  }
+  assert.match(source, /idempotencyKey\.current \?\?= crypto\.randomUUID\(\)/);
+  assert.match(source, /channel-accounts/);
+});
+
+test("la ruta de cuentas exige sesión antes de crear o listar", async () => {
+  const source = await read("lib/server/admin-handlers.ts");
+  const start = source.indexOf("export function adminChannelAccounts");
+  const guard = source.indexOf("adminApiRoute(request", start);
+  const create = source.indexOf("createChannelAccount(", start);
+  assert.ok(guard >= 0 && guard < create, "el guard corre antes del alta");
+});

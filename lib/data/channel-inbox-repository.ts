@@ -159,6 +159,86 @@ export class D1ChannelInboxRepository {
     };
   }
 
+  /**
+   * Todas las cuentas del canal, para la pantalla que las administra. Sin
+   * filtrar por estado: una cuenta pausada tiene que poder verse y
+   * reactivarse, no desaparecer.
+   */
+  async listChannelAccounts(): Promise<
+    Array<{
+      id: string;
+      provider: string;
+      platform: string;
+      externalAccountId: string;
+      displayName: string;
+      status: string;
+      defaultAssignee: string | null;
+      createdAt: string;
+    }>
+  > {
+    const result = await this.d1
+      .prepare(
+        `SELECT id, provider, platform, external_account_id, display_name, status, default_assignee, created_at
+           FROM channel_account
+          ORDER BY created_at DESC`,
+      )
+      .all<Record<string, unknown>>();
+    return (result.results ?? []).map((row) => ({
+      id: String(row.id),
+      provider: String(row.provider),
+      platform: String(row.platform),
+      externalAccountId: String(row.external_account_id),
+      displayName: String(row.display_name),
+      status: String(row.status),
+      defaultAssignee: row.default_assignee === null ? null : String(row.default_assignee),
+      createdAt: String(row.created_at),
+    }));
+  }
+
+  /**
+   * Da de alta o actualiza una cuenta del canal. Idempotente por
+   * `(provider, external_account_id)`: reconectar la misma cuenta desde el
+   * panel corrige nombre, estado y responsable en lugar de duplicar la fila
+   * ni fallar.
+   */
+  async createChannelAccount(input: {
+    id: string;
+    provider: string;
+    platform: string;
+    externalAccountId: string;
+    displayName: string;
+    status: string;
+    defaultAssignee: string | null;
+    updatedAt: string;
+  }): Promise<{ id: string }> {
+    const row = await this.d1
+      .prepare(
+        `INSERT INTO channel_account
+           (id, provider, platform, external_account_id, display_name, status, default_assignee, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(provider, external_account_id) DO UPDATE SET
+           platform = excluded.platform,
+           display_name = excluded.display_name,
+           status = excluded.status,
+           default_assignee = excluded.default_assignee,
+           updated_at = excluded.updated_at,
+           version = channel_account.version + 1
+         RETURNING id`,
+      )
+      .bind(
+        input.id,
+        input.provider,
+        input.platform,
+        input.externalAccountId,
+        input.displayName,
+        input.status,
+        input.defaultAssignee,
+        input.updatedAt,
+      )
+      .first<{ id: string }>();
+    return { id: String(row?.id ?? input.id) };
+  }
+
   async findConversation(
     provider: string,
     externalConversationId: string,
@@ -673,4 +753,6 @@ export type ChannelInboxRepositoryLike = Pick<
   | "listRecentMessages"
   | "listConversationQueue"
   | "findConversationQueueRow"
+  | "listChannelAccounts"
+  | "createChannelAccount"
 >;
