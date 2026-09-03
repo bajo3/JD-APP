@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { PublicProfileView } from "@/lib/server/public-data";
 import { contactHref, contactLabel } from "./contact";
@@ -6,8 +7,7 @@ export function PublicHeader({ profile }: { profile: PublicProfileView | null })
   return (
     <header className="site-header">
       <Link className="brand" href="/" aria-label="Jesús Díaz Automotores, inicio">
-        <span className="brand-mark">JD</span>
-        <span><strong>JESÚS DÍAZ</strong><small>AUTOMOTORES</small></span>
+        <Image className="brand-logo" src="/logo.jpg" alt="Jesús Díaz Automotores" width={801} height={253} priority />
       </Link>
       <nav className="public-nav" aria-label="Navegación principal">
         <Link href="/stock">Stock</Link>

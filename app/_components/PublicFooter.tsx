@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { PublicProfileView } from "@/lib/server/public-data";
 import { contactHref } from "./contact";
@@ -10,8 +11,7 @@ export function PublicFooter({ profile }: { profile: PublicProfileView | null })
   return (
     <footer id="contacto">
       <div>
-        <span className="brand-mark">JD</span>
-        <strong>{profile?.name?.toUpperCase() ?? "JESÚS DÍAZ AUTOMOTORES"}</strong>
+        <Image className="footer-logo" src="/logo.jpg" alt="Jesús Díaz Automotores" width={801} height={253} />
       </div>
       <p>Estamos para ayudarte a encontrar tu próximo auto.</p>
       {profile?.whatsappE164 ? (

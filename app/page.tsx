@@ -25,8 +25,7 @@ export default async function Home() {
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
       <header className="site-header">
         <a className="brand" href="#inicio">
-          <span className="brand-mark">JD</span>
-          <span><strong>JESÚS DÍAZ</strong><small>AUTOMOTORES</small></span>
+          <Image className="brand-logo" src="/logo.jpg" alt="Jesús Díaz Automotores" width={801} height={253} priority />
         </a>
         <div className="location">
           <span className="pin">⌖</span> {profile?.city ?? "Ubicación a confirmar"}
@@ -128,7 +127,7 @@ export default async function Home() {
       </main>
 
       <footer id="contacto">
-        <div><span className="brand-mark">JD</span><strong>{profile?.name ?? "JESÚS DÍAZ AUTOMOTORES"}</strong></div>
+        <div><Image className="footer-logo" src="/logo.jpg" alt="Jesús Díaz Automotores" width={801} height={253} /></div>
         <p>Estamos para ayudarte a encontrar tu próximo auto.</p>
         <a href={contactUrl}>
           {contactLabel(profile)}{profile?.phoneNational ? ` · ${profile.phoneNational}` : ""}
