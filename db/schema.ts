@@ -710,6 +710,232 @@ export const adminAuditLogs = sqliteTable(
   ],
 );
 
+export const channelAccounts = sqliteTable(
+  "channel_account",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull().default("ZERNIO"),
+    platform: text("platform").notNull(),
+    externalAccountId: text("external_account_id").notNull(),
+    displayName: text("display_name").notNull(),
+    status: text("status").notNull().default("ACTIVE"),
+    defaultAssignee: text("default_assignee"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_channel_account_provider_external").on(
+      table.provider,
+      table.externalAccountId,
+    ),
+    index("idx_channel_account_platform_status").on(table.platform, table.status),
+  ],
+);
+
+export const channelWebhookEvents = sqliteTable(
+  "channel_webhook_event",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull().default("ZERNIO"),
+    externalEventId: text("external_event_id").notNull(),
+    type: text("type").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    status: text("status").notNull().default("RECEIVED"),
+    failureReason: text("failure_reason"),
+    receivedAt: text("received_at").notNull(),
+    processedAt: text("processed_at"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_channel_webhook_event_provider_external").on(
+      table.provider,
+      table.externalEventId,
+    ),
+    index("idx_channel_webhook_event_status_received").on(table.status, table.receivedAt),
+  ],
+);
+
+export const inboxConversations = sqliteTable(
+  "inbox_conversation",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull().default("ZERNIO"),
+    externalConversationId: text("external_conversation_id").notNull(),
+    channelAccountId: text("channel_account_id")
+      .notNull()
+      .references(() => channelAccounts.id, { onDelete: "restrict" }),
+    platform: text("platform").notNull(),
+    participantExternalId: text("participant_external_id").notNull(),
+    participantPhoneNormalized: text("participant_phone_normalized"),
+    participantDisplayName: text("participant_display_name"),
+    leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("OPEN"),
+    handling: text("handling").notNull().default("HUMAN"),
+    assignedTo: text("assigned_to"),
+    lastInboundAt: text("last_inbound_at"),
+    lastOutboundAt: text("last_outbound_at"),
+    firstResponseAt: text("first_response_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_inbox_conversation_provider_external").on(
+      table.provider,
+      table.externalConversationId,
+    ),
+    index("idx_inbox_conversation_status_inbound").on(table.status, table.lastInboundAt),
+    index("idx_inbox_conversation_assigned_inbound").on(
+      table.assignedTo,
+      table.lastInboundAt,
+    ),
+    index("idx_inbox_conversation_lead").on(table.leadId),
+  ],
+);
+
+export const inboxMessages = sqliteTable(
+  "inbox_message",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => inboxConversations.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("ZERNIO"),
+    externalMessageId: text("external_message_id").notNull(),
+    platformMessageId: text("platform_message_id"),
+    direction: text("direction").notNull(),
+    authorType: text("author_type").notNull(),
+    authorId: text("author_id"),
+    text: text("text"),
+    attachmentsJson: text("attachments_json").notNull().default("[]"),
+    simulationId: text("simulation_id").references(() => simulations.id, {
+      onDelete: "set null",
+    }),
+    appraisalId: text("appraisal_id").references(() => appraisals.id, {
+      onDelete: "set null",
+    }),
+    deliveryStatus: text("delivery_status"),
+    deliveryError: text("delivery_error"),
+    occurredAt: text("occurred_at").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_inbox_message_provider_external").on(
+      table.provider,
+      table.externalMessageId,
+    ),
+    index("idx_inbox_message_conversation_occurred").on(
+      table.conversationId,
+      table.occurredAt,
+    ),
+  ],
+);
+
+export const buyerPassports = sqliteTable(
+  "buyer_passport",
+  {
+    id: text("id").primaryKey(),
+    leadId: text("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").references(() => inboxConversations.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().default("DRAFT"),
+    budgetCents: integer("budget_cents"),
+    downPaymentCents: integer("down_payment_cents"),
+    maxMonthlyPaymentCents: integer("max_monthly_payment_cents"),
+    currency: text("currency").notNull().default("ARS"),
+    desiredMakesJson: text("desired_makes_json").notNull().default("[]"),
+    desiredModelsJson: text("desired_models_json").notNull().default("[]"),
+    acceptedTypesJson: text("accepted_types_json").notNull().default("[]"),
+    minYear: integer("min_year"),
+    maxMileageKm: integer("max_mileage_km"),
+    primaryUse: text("primary_use"),
+    needsFinancing: integer("needs_financing", { mode: "boolean" }),
+    tradeInAppraisalId: text("trade_in_appraisal_id").references(() => appraisals.id, {
+      onDelete: "set null",
+    }),
+    tradeInDescription: text("trade_in_description"),
+    urgencyDays: integer("urgency_days"),
+    locality: text("locality"),
+    maxDistanceKm: integer("max_distance_km"),
+    mandatoryConditionsJson: text("mandatory_conditions_json").notNull().default("[]"),
+    negotiableConditionsJson: text("negotiable_conditions_json").notNull().default("[]"),
+    /** Cuándo lo confirmó el cliente. Sin confirmación no se busca a su nombre. */
+    confirmedAt: text("confirmed_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("idx_buyer_passport_lead").on(table.leadId),
+    index("idx_buyer_passport_status_updated").on(table.status, table.updatedAt),
+  ],
+);
+
+export const demands = sqliteTable(
+  "demand",
+  {
+    id: text("id").primaryKey(),
+    publicCode: text("public_code").notNull(),
+    passportId: text("passport_id")
+      .notNull()
+      .references(() => buyerPassports.id, { onDelete: "cascade" }),
+    leadId: text("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("OPEN"),
+    criteriaJson: text("criteria_json").notNull(),
+    /** Vigencia: una demanda vieja no se sigue tratando como caliente. */
+    validUntil: text("valid_until").notNull(),
+    assignedTo: text("assigned_to"),
+    closedReason: text("closed_reason"),
+    closedAt: text("closed_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_demand_public_code").on(table.publicCode),
+    index("idx_demand_status_valid").on(table.status, table.validUntil),
+    index("idx_demand_lead").on(table.leadId),
+  ],
+);
+
+export const demandMatches = sqliteTable(
+  "demand_match",
+  {
+    id: text("id").primaryKey(),
+    demandId: text("demand_id")
+      .notNull()
+      .references(() => demands.id, { onDelete: "cascade" }),
+    vehicleId: text("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    /** Coincidencia en puntos básicos (10000 = 100%), calculada con criterios explícitos. */
+    scoreBps: integer("score_bps").notNull(),
+    breakdownJson: text("breakdown_json").notNull().default("{}"),
+    status: text("status").notNull().default("NEW"),
+    notifiedTo: text("notified_to"),
+    notifiedAt: text("notified_at"),
+    respondedAt: text("responded_at"),
+    visitedAt: text("visited_at"),
+    purchasedAt: text("purchased_at"),
+    discardedReason: text("discarded_reason"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("uq_demand_match_demand_vehicle").on(table.demandId, table.vehicleId),
+    index("idx_demand_match_status_score").on(table.status, table.scoreBps),
+    index("idx_demand_match_vehicle").on(table.vehicleId),
+  ],
+);
+
 export type BusinessProfileRow = typeof businessProfiles.$inferSelect;
 export type VehicleRow = typeof vehicles.$inferSelect;
 export type VehicleMediaRow = typeof vehicleMedia.$inferSelect;
@@ -728,3 +954,10 @@ export type CustomerSessionRow = typeof customerSessions.$inferSelect;
 export type CustomerPreferenceRow = typeof customerPreferences.$inferSelect;
 export type CustomerFavoriteRow = typeof customerFavorites.$inferSelect;
 export type CustomerSavedSearchRow = typeof customerSavedSearches.$inferSelect;
+export type ChannelAccountRow = typeof channelAccounts.$inferSelect;
+export type ChannelWebhookEventRow = typeof channelWebhookEvents.$inferSelect;
+export type InboxConversationRow = typeof inboxConversations.$inferSelect;
+export type InboxMessageRow = typeof inboxMessages.$inferSelect;
+export type BuyerPassportRow = typeof buyerPassports.$inferSelect;
+export type DemandRow = typeof demands.$inferSelect;
+export type DemandMatchRow = typeof demandMatches.$inferSelect;
