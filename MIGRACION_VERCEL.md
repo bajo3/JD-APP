@@ -23,6 +23,16 @@ esta guía. No se crea un proyecto, no se vincula el checkout y no se ejecuta
 - Todos los secretos se cargan sólo en Vercel o en `.env` ignorado. No se
   versionan ni se muestran en logs, pruebas o documentación.
 
+## Avance verificado
+
+- `db/d1-remote.ts` implementa y prueba el contrato D1 contra el endpoint
+  remoto oficial: consultas preparadas, parámetros, `first`, `all`, `run` y
+  `batch`. Los errores no devuelven SQL, cuerpo del proveedor ni credenciales.
+- Aún no se conecta desde `db/index.ts`: el checkout actual sigue usando el
+  binding local de Workers mientras se completa también R2 y se reemplaza el
+  runtime. Esta separación evita dejar roto el preview local a mitad de la
+  migración.
+
 ## Variables que deberá recibir Vercel
 
 No cargar valores hasta crear el proyecto compatible. Los nombres previstos
