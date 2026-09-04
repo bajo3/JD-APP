@@ -5,7 +5,9 @@ import { ApiError, publicCode, stableToken } from "./api";
 import { D1ChannelInboxRepository } from "@/lib/data/channel-inbox-repository";
 import { D1DemandRepository, type DemandRepositoryLike } from "@/lib/data/demand-repository";
 import { D1VisitRequestRepository, type VisitRequestRepositoryLike } from "@/lib/data/visit-request-repository";
+import { D1AppraisalRulesetRepository, type AppraisalRulesetRepositoryLike } from "@/lib/data/appraisal-ruleset-repository";
 import { normalizeDemandCriteria } from "@/lib/domain/demand-matching.mjs";
+import { estimateAppraisalRange } from "@/lib/domain/appraisal-range.mjs";
 import { generateSessionToken, hashSessionToken } from "@/lib/auth/index.mjs";
 import { escalateToHuman, type OutboundRuntime } from "./inbox-outbound";
 import { createSimulationResponse } from "./simulation-api";
@@ -50,6 +52,7 @@ export type AdvisorToolContext = Readonly<{
   outboundRuntime?: OutboundRuntime;
   demandRepository?: DemandRepositoryLike;
   visitRepository?: VisitRequestRepositoryLike;
+  appraisalRulesetRepository?: AppraisalRulesetRepositoryLike;
   idempotencyKey?: string;
 }>;
 
@@ -193,6 +196,15 @@ export const ADVISOR_TOOLS = Object.freeze([
         observaciones: { type: ["string", "null"] },
       },
     },
+  },
+  {
+    name: "cotizar_permuta",
+    description: "Da un rango preliminar sólo desde el tarifario vigente. Nunca confirma una toma: queda sujeto a revisión física y documental.",
+    strict: true,
+    input_schema: { type: "object", additionalProperties: false, required: ["marca", "modelo", "anio", "kilometraje", "estadoDeclarado"], properties: {
+      marca: { type: "string" }, modelo: { type: "string" }, anio: { type: "integer" }, kilometraje: { type: "integer" },
+      estadoDeclarado: { type: "string", description: "EXCELLENT, GOOD, FAIR o NEEDS_REPAIR." }, tienePrenda: { type: "boolean" },
+    } },
   },
   {
     name: "solicitar_visita",
@@ -714,6 +726,20 @@ async function registrarPermuta(
   };
 }
 
+async function cotizarPermuta(input: Record<string, unknown>, context: AdvisorToolContext): Promise<AdvisorToolResult> {
+  const now = context.now ?? new Date();
+  const published = await (context.appraisalRulesetRepository ?? new D1AppraisalRulesetRepository()).findCurrent(now);
+  if (!published) return { ok: true, data: { requiereRevision: true, mensajeCliente: "No tenemos una referencia vigente para cotizar tu usado. Una persona del equipo lo revisa física y documentalmente." } };
+  const range = estimateAppraisalRange(published.ruleset, {
+    make: requiredText(input, "marca", 2, 60), model: requiredText(input, "modelo", 1, 80),
+    year: requiredIntegerValue(input, "anio", 1950, now.getUTCFullYear() + 1), mileageKm: requiredIntegerValue(input, "kilometraje", 0, 3_000_000),
+    declaredCondition: requiredText(input, "estadoDeclarado", 1, 40).toUpperCase(), hasLien: input.tienePrenda === true,
+  }, { now, certainty: "T0" });
+  if (!range.estimable) return { ok: true, data: { requiereRevision: true, mensajeCliente: range.mensaje } };
+  const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: range.currency, maximumFractionDigits: 0 });
+  return { ok: true, data: { requiereRevision: true, rango: { desdeCents: range.lowCents, hastaCents: range.highCents, moneda: range.currency, versionTarifario: published.version }, mensajeCliente: `El rango preliminar es entre ${money.format(range.lowCents / 100)} y ${money.format(range.highCents / 100)}. ${range.aviso}` } };
+}
+
 async function solicitarVisita(
   input: Record<string, unknown>,
   context: AdvisorToolContext,
@@ -871,6 +897,7 @@ export async function runAdvisorTool(
     if (name === "registrar_demanda") return await registrarDemanda(args, context);
     if (name === "confirmar_demanda") return await confirmarDemanda(args, context);
     if (name === "registrar_permuta") return await registrarPermuta(args, context);
+    if (name === "cotizar_permuta") return await cotizarPermuta(args, context);
     if (name === "solicitar_visita") return await solicitarVisita(args, context);
     if (name === "escalar_a_persona") return await escalar(args, context);
     return {

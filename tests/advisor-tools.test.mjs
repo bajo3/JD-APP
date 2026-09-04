@@ -56,11 +56,12 @@ function context(overrides = {}) {
 }
 
 test("las definiciones no dejan al modelo inventar argumentos", () => {
-  assert.equal(ADVISOR_TOOLS.length, 7);
+  assert.equal(ADVISOR_TOOLS.length, 8);
   const names = ADVISOR_TOOLS.map((tool) => tool.name).sort();
   assert.deepEqual(names, [
     "buscar_vehiculos",
     "confirmar_demanda",
+    "cotizar_permuta",
     "escalar_a_persona",
     "registrar_demanda",
     "registrar_permuta",

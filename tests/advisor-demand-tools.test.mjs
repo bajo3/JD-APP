@@ -53,6 +53,7 @@ registerHooks({
 const { createAdvisorSession, runAdvisorTool } = await import("../lib/server/advisor-tools.ts");
 const { D1DemandRepository } = await import("../lib/data/demand-repository.ts");
 const { D1VisitRequestRepository } = await import("../lib/data/visit-request-repository.ts");
+const { normalizeAppraisalRuleset } = await import("../lib/domain/appraisal-range.mjs");
 
 const NOW = new Date("2026-09-03T12:00:00.000Z");
 const DAY = 86_400_000;
@@ -313,6 +314,33 @@ test("la permuta queda como T0 sin cotizar ni prometer una toma", async () => {
   assert.doesNotMatch(result.data.mensajeCliente, /\$|\d{3,}/);
   assert.match(result.data.mensajeCliente, /no puedo confirmar un valor/i);
   assert.equal(events[0].type, "TRADE_IN_SUBMITTED");
+});
+
+test("la cotización usa sólo una referencia vigente y conserva la revisión humana", async () => {
+  const { context } = harness();
+  context.appraisalRulesetRepository = {
+    async findCurrent() {
+      return { id: "rules-1", version: 1, ruleset: normalizeAppraisalRuleset({
+        version: "1", currency: "ARS", references: [{ make: "Volkswagen", model: "Gol", year: 2012, baseCents: 10_000_00 }],
+      }) };
+    },
+  };
+  const quoted = await runAdvisorTool("cotizar_permuta", {
+    marca: "Volkswagen", modelo: "Gol", anio: 2012, kilometraje: 120000, estadoDeclarado: "GOOD", tienePrenda: false,
+  }, context);
+  assert.equal(quoted.ok, true);
+  assert.equal(quoted.data.requiereRevision, true);
+  assert.match(quoted.data.mensajeCliente, /Rango preliminar.*revisión física y documental/i);
+  assert.equal(quoted.data.rango.moneda, "ARS");
+
+  context.appraisalRulesetRepository = { async findCurrent() { return null; } };
+  const missing = await runAdvisorTool("cotizar_permuta", {
+    marca: "Volkswagen", modelo: "Gol", anio: 2012, kilometraje: 120000, estadoDeclarado: "GOOD", tienePrenda: false,
+  }, context);
+  assert.equal(missing.ok, true);
+  assert.equal(missing.data.requiereRevision, true);
+  assert.equal("rango" in missing.data, false);
+  assert.doesNotMatch(missing.data.mensajeCliente, /\$|\d{3,}/);
 });
 
 test("la visita queda pendiente de confirmación humana y no acepta una unidad ajena", async () => {

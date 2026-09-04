@@ -192,7 +192,9 @@ export const appraisalRuleSets = sqliteTable(
     validFrom: text("valid_from"),
     validUntil: text("valid_until"),
     publishedBy: text("published_by"),
+    lockVersion: integer("lock_version").notNull().default(1),
     createdAt: createdAt(),
+    updatedAt: updatedAt(),
   },
   (table) => [uniqueIndex("uq_appraisal_rule_set_version").on(table.version)],
 );

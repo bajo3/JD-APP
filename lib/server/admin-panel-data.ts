@@ -15,6 +15,7 @@ import { buildSellerLeadDetailDto } from "@/lib/crm/index.mjs";
 import { D1AppraisalMediaRepository } from "@/lib/data/appraisal-media-repository";
 import { D1ConsignmentMediaRepository } from "@/lib/data/consignment-media-repository";
 import { D1LeadContextReadRepository } from "@/lib/data/lead-context-read-repository";
+import { D1AppraisalRulesetRepository } from "@/lib/data/appraisal-ruleset-repository";
 import { getConversionFunnel } from "./funnel-data";
 import { adminDependencies } from "./admin-adapter";
 import { requirePanelUser } from "./panel-auth";
@@ -65,6 +66,16 @@ export type AdminFinancePlan = {
   version: number;
   isDemo: 0 | 1;
 };
+
+export type AdminAppraisalRuleset = Readonly<{
+  id: string;
+  commercialVersion: number;
+  status: string;
+  validFrom: string | null;
+  validUntil: string | null;
+  referenceCount: number;
+  version: number;
+}>;
 
 export type SellerLeadEvent = Readonly<{
   id: string;
@@ -342,6 +353,22 @@ export async function getAdminPanelData() {
       status: plan.status,
       version: plan.lockVersion,
       isDemo: plan.isDemo ? 1 : 0,
+    })),
+  };
+}
+
+export async function getAppraisalRulesetPanelData(): Promise<{ rulesets: readonly AdminAppraisalRuleset[] }> {
+  await requirePanelUser("/panel/tasaciones/referencias");
+  const rows = await new D1AppraisalRulesetRepository().list();
+  return {
+    rulesets: rows.map((row) => ({
+      id: row.id,
+      commercialVersion: row.version,
+      status: row.status,
+      validFrom: row.validFrom,
+      validUntil: row.validUntil,
+      referenceCount: row.referenceCount,
+      version: row.lockVersion,
     })),
   };
 }

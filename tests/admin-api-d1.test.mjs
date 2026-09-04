@@ -60,6 +60,26 @@ test("idempotency keys are unique per create scope", () => {
   assert.equal(winner.resource_id, "vehicle-a");
 });
 
+test("las referencias de tasación suman control optimista sin reescribir versiones publicadas", () => {
+  const db = cleanAdminDatabase();
+  db.exec(migration("drizzle/0016_simple_captain_flint.sql"));
+  const columns = db.prepare("PRAGMA table_info(appraisal_rule_set)").all().map((row) => row.name);
+  assert.ok(columns.includes("lock_version"));
+  assert.ok(columns.includes("updated_at"));
+  db.prepare(
+    `INSERT INTO appraisal_rule_set
+      (id, version, status, rules_json, lock_version, created_at, updated_at)
+     VALUES ('rules-1', 1, 'DRAFT', '{"currency":"ARS","references":[]}', 1, ?, ?)`,
+  ).run("2026-08-16T15:00:00.000Z", "2026-08-16T15:00:00.000Z");
+  const publish = db.prepare(
+    `UPDATE appraisal_rule_set
+        SET status = 'PUBLISHED', lock_version = lock_version + 1, updated_at = ?
+      WHERE id = ? AND status = 'DRAFT' AND lock_version = ?`,
+  );
+  assert.equal(publish.run("2026-08-16T15:00:01.000Z", "rules-1", 1).changes, 1);
+  assert.equal(publish.run("2026-08-16T15:00:02.000Z", "rules-1", 1).changes, 0);
+});
+
 test("a stale optimistic update writes neither a second change nor a false audit event", () => {
   const db = cleanAdminDatabase();
   const update = db.prepare(

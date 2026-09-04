@@ -403,7 +403,7 @@ Con esto el circuito de demandas queda cerrado: el asesor la registra cuando no
 hay unidad, el cliente la confirma, entra una unidad y la coincidencia espera en
 el panel a que una persona decida avisar.
 
-### F5 — Rango preliminar de permuta — **motor implementado**
+### F5 — Rango preliminar de permuta — **implementado y validado localmente**
 
 `lib/domain/appraisal-range.mjs` calcula el rango sobre un tarifario de
 tasación **versionado y cargado por el equipo**. Sin scraping de MercadoLibre
@@ -427,8 +427,19 @@ Cubierto por `tests/appraisal-range.test.mjs`:
   vista (T1) el rango se cierra, pero el centro no cambia y sigue exigiendo
   revisión.
 
-Falta de F5: la herramienta del asesor para cotizar por WhatsApp y la carga de
-referencias desde el panel. Las referencias son la decisión #15 de JDA.
+`cotizar_permuta` sólo consulta una versión `PUBLISHED` y vigente; si no hay
+referencia exacta, el año no coincide, se declara prenda o el estado no está
+previsto, no devuelve importe y deriva a revisión humana. Cuando sí hay
+referencia, expone únicamente el rango `T0`, la versión del tarifario y el
+aviso de revisión física y documental: nunca confirma una toma.
+
+El panel protegido permite cargar un JSON validado de referencias como
+`DRAFT`, con clave de idempotencia, auditoría y control optimista. La migración
+0016 agrega `lock_version` y `updated_at`; al publicar, el borrador se vuelve
+inmutable y cualquier corrección exige una versión comercial nueva. La carga
+no incorpora valores DEMO ni comparables externos: las referencias reales
+siguen siendo la decisión #15 de JDA. Hasta que el equipo las cargue y publique,
+WhatsApp responde honestamente que una persona debe tasar la unidad.
 
 ### F6 — Posventa y referidos
 

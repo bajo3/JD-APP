@@ -27,7 +27,7 @@ export function AdminTable({
   columns,
   actions = [],
 }: {
-  rows: Row[];
+  rows: readonly Row[];
   columns: Column[];
   actions?: readonly AdminRowAction[];
 }) {

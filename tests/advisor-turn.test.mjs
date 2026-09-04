@@ -140,7 +140,7 @@ test("el asesor contesta con el texto del modelo cuando no necesita herramientas
   assert.equal(seen[0].model, ADVISOR_MODEL);
   assert.equal(seen[0].thinking.type, "adaptive");
   assert.equal(seen[0].system[0].cache_control.type, "ephemeral");
-  assert.equal(seen[0].tools.length, 7);
+  assert.equal(seen[0].tools.length, 8);
 });
 
 test("una respuesta vacía escala en lugar de improvisar", async () => {

@@ -35,7 +35,7 @@ import {
   type VehicleStatus,
 } from "@/lib/admin";
 import { adminDependencies } from "./admin-adapter";
-import { adminApiRoute, adminData, optionalEnum, requiredEnum } from "./admin-api";
+import { adminApiRoute, adminData, hashAdminPayload, optionalEnum, requiredEnum, optionalIsoDate, idempotencyConflict } from "./admin-api";
 import type { AdminApiActor } from "./admin-auth";
 import type { ChannelInboxRepositoryLike } from "@/lib/data/channel-inbox-repository";
 import type { OutboundRuntime } from "./inbox-outbound";
@@ -47,6 +47,8 @@ import {
   requiredInteger,
   requiredString,
 } from "./api";
+import { D1AppraisalRulesetRepository } from "@/lib/data/appraisal-ruleset-repository";
+import { normalizeAppraisalRuleset } from "@/lib/domain/appraisal-range.mjs";
 
 function dependencies(actor: AdminApiActor) {
   return adminDependencies(actor);
@@ -80,6 +82,75 @@ function resourceId(value: string): string {
 
 export function adminOverview(request: Request): Promise<Response> {
   return adminApiRoute(request, async (actor) => adminData(await getAdminOverview(dependencies(actor))));
+}
+
+function appraisalRulesetPayload(payload: Record<string, unknown>): {
+  version: number;
+  ruleset: Record<string, unknown>;
+  validFrom: string | null;
+  validUntil: string | null;
+} {
+  const version = requiredInteger(payload, "version", { min: 1, max: 2_147_483_647 });
+  if (!payload.ruleset || typeof payload.ruleset !== "object" || Array.isArray(payload.ruleset)) {
+    throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { ruleset: "Debe ser un tarifario válido." });
+  }
+  const validFrom = optionalIsoDate(payload, "validFrom") ?? null;
+  const validUntil = optionalIsoDate(payload, "validUntil") ?? null;
+  if (validFrom && validUntil && new Date(validFrom).getTime() >= new Date(validUntil).getTime()) {
+    throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { validity: "validFrom debe ser anterior a validUntil." });
+  }
+  try {
+    normalizeAppraisalRuleset({ ...(payload.ruleset as Record<string, unknown>), version: String(version) });
+  } catch {
+    throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { ruleset: "El tarifario no tiene el formato esperado." });
+  }
+  return { version, ruleset: { ...(payload.ruleset as Record<string, unknown>), version: String(version) }, validFrom, validUntil };
+}
+
+export function adminAppraisalRuleSets(request: Request): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const repository = new D1AppraisalRulesetRepository();
+    if (request.method === "GET") return adminData(await repository.list());
+    const payload = appraisalRulesetPayload(await readJsonObject(request));
+    const idempotencyKey = requireIdempotencyKey(request);
+    const result = await repository.createDraft({
+      id: crypto.randomUUID(),
+      ...payload,
+      idempotencyKey,
+      requestHash: await hashAdminPayload(payload),
+      actor,
+      occurredAt: new Date().toISOString(),
+    });
+    if (!result.ok) {
+      if (result.reason === "idempotency_conflict") idempotencyConflict();
+      throw new ApiError(409, "APPRAISAL_RULE_SET_VERSION_CONFLICT", "La versión comercial ya existe. Cargá una versión nueva.");
+    }
+    return adminData(result.record, { status: result.replayed ? 200 : 201 });
+  });
+}
+
+export function adminAppraisalRuleSet(request: Request, id: string): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const safeId = resourceId(id);
+    const payload = await readJsonObject(request);
+    if (payload.action !== "publish") {
+      throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { action: "Sólo se admite publicar." });
+    }
+    const result = await new D1AppraisalRulesetRepository().publish({
+      id: safeId,
+      expectedLockVersion: requiredInteger(payload, "expectedVersion", { min: 1, max: 2_147_483_647 }),
+      actor,
+      occurredAt: new Date().toISOString(),
+    });
+    if (!result.ok) {
+      throw new ApiError(
+        result.reason === "not_found" ? 404 : 409,
+        result.reason === "not_found" ? "ADMIN_RESOURCE_NOT_FOUND" : "ADMIN_VERSION_CONFLICT",
+        result.reason === "not_found" ? "El registro no existe." : "El registro cambió. Recargá antes de continuar.",
+      );
+    }
+    return adminData(result.record);
+  });
 }
 
 export function adminVehicles(request: Request): Promise<Response> {

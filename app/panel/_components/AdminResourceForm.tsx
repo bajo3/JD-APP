@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
 
-type Resource = "vehicle" | "lead" | "appraisal" | "consignment" | "finance" | "promotion";
+type Resource = "vehicle" | "lead" | "appraisal" | "consignment" | "finance" | "promotion" | "appraisal-ruleset";
 export type AdminFormRecord = Readonly<{
   id: string;
   label: string;
@@ -135,6 +135,14 @@ function formFields(resource: Resource, records: readonly AdminFormRecord[]) {
       <Check name="isDemo" label="Guardar como tarifario DEMO" />
     </>;
   }
+  if (resource === "appraisal-ruleset") {
+    return <>
+      <Field name="version" label="Versión comercial" type="number" min="1" />
+      <Field name="validFrom" label="Vigente desde (opcional)" type="datetime-local" required={false} />
+      <Field name="validUntil" label="Vigente hasta (opcional)" type="datetime-local" required={false} />
+      <TextArea name="rulesJson" label="Referencias y ajustes (JSON)" placeholder={'{"currency":"ARS","references":[{"make":"Marca","model":"Modelo","year":2020,"baseCents":123000000}]}' } />
+    </>;
+  }
   return <>
     <Field name="slug" label="Identificador web" placeholder="oferta-jd-del-dia" />
     <Field name="publicCode" label="Código público" /><Field name="title" label="Título" /><Field name="description" label="Descripción" />
@@ -198,6 +206,20 @@ function buildRequest(resource: Resource, form: FormData, records: readonly Admi
         installmentCoefficientPpm: tierCoefficient, sortOrder: 0 }], isDemo: form.has("isDemo"),
     } } as const;
   }
+  if (resource === "appraisal-ruleset") {
+    let ruleset: unknown;
+    try {
+      ruleset = JSON.parse(value("rulesJson"));
+    } catch {
+      throw new Error("Referencias: ingresá un JSON válido.");
+    }
+    return { method: "POST", endpoint: "/api/v1/admin/appraisal-rulesets", payload: {
+      version: integer(value("version"), "Versión comercial"),
+      ruleset,
+      ...(value("validFrom") ? { validFrom: iso(value("validFrom"), "Inicio") } : {}),
+      ...(value("validUntil") ? { validUntil: iso(value("validUntil"), "Fin") } : {}),
+    } } as const;
+  }
   const normalPriceCents = cents(value("normalPriceArs"), "Precio normal");
   return { method: "POST", endpoint: "/api/v1/admin/promotions", payload: {
     slug: value("slug"), publicCode: value("publicCode"), title: value("title"), description: value("description"),
@@ -255,7 +277,7 @@ function iso(value: string, label: string): string {
 }
 
 function formTitle(resource: Resource): string {
-  return ({ vehicle: "Alta de vehículo", lead: "Actualizar etapa de un lead", appraisal: "Revisar una tasación", consignment: "Revisar una consignación", finance: "Crear versión de tarifario", promotion: "Crear Oferta JD" })[resource];
+  return ({ vehicle: "Alta de vehículo", lead: "Actualizar etapa de un lead", appraisal: "Revisar una tasación", consignment: "Revisar una consignación", finance: "Crear versión de tarifario", promotion: "Crear Oferta JD", "appraisal-ruleset": "Cargar referencias de tasación" })[resource];
 }
 
 function RecordSelect({ records, label }: { records: readonly AdminFormRecord[]; label: string }) {
@@ -324,6 +346,10 @@ function LeadFields({ records }: { records: readonly AdminFormRecord[] }) {
 
 function Field({ name, label, required = true, ...input }: { name: string; label: string; required?: boolean } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "name" | "required">) {
   return <label>{label}<input {...input} name={name} required={required} /></label>;
+}
+
+function TextArea({ name, label, placeholder }: { name: string; label: string; placeholder?: string }) {
+  return <label className="admin-form-wide">{label}<textarea name={name} required rows={8} spellCheck={false} placeholder={placeholder} /></label>;
 }
 
 function Check({ name, label }: { name: string; label: string }) {
