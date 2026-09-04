@@ -104,7 +104,23 @@ const AUTHORIZED_USER = {
 };
 
 function panelAuth(user = AUTHORIZED_USER) {
-  return { requireUser: async () => user };
+  return {
+    async readSession() {
+      return {
+        id: user.userId,
+        email: user.email,
+        name: user.displayName,
+        phoneNormalized: null,
+        leadId: null,
+        status: "ACTIVE",
+        failedAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: null,
+        version: 1,
+        createdAt: NOW.toISOString(),
+      };
+    },
+  };
 }
 
 function fakeRepository(rows, accounts = []) {

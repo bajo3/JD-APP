@@ -15,6 +15,20 @@ registerHooks({
 
 const { authenticateAdminRequest } = await import("../lib/server/admin-auth.ts");
 
+const authenticatedAccount = Object.freeze({
+  id: "operator-1",
+  email: "Operator@Example.com",
+  name: "Jesús Díaz",
+  phoneNormalized: null,
+  leadId: null,
+  status: "ACTIVE",
+  failedAttempts: 0,
+  lockedUntil: null,
+  lastLoginAt: null,
+  version: 1,
+  createdAt: "2026-09-04T00:00:00.000Z",
+});
+
 function request(headers = {}, body) {
   return new Request("https://example.test/api/v1/admin/overview", {
     method: body === undefined ? "GET" : "POST",
@@ -23,34 +37,40 @@ function request(headers = {}, body) {
   });
 }
 
-test("admin authentication fails closed for anonymous, missing configuration and denied users", () => {
-  assert.throws(
-    () => authenticateAdminRequest(request(), { allowedEmails: "operator@example.com" }),
+test("admin authentication fails closed for anonymous, missing configuration and denied users", async () => {
+  await assert.rejects(
+    () => authenticateAdminRequest(request(), {
+      allowedEmails: "operator@example.com",
+      async readSession() { return null; },
+    }),
     (error) => error instanceof ApiError && error.status === 401 && error.code === "ADMIN_AUTH_REQUIRED",
   );
-  assert.throws(
-    () => authenticateAdminRequest(request({
-      "oai-authenticated-user-id": "operator-1",
-      "oai-authenticated-user-email": "operator@example.com",
-    }), { allowedEmails: "" }),
+  await assert.rejects(
+    () => authenticateAdminRequest(request(), {
+      allowedEmails: "",
+      async readSession() { return authenticatedAccount; },
+    }),
     (error) => error instanceof ApiError && error.status === 503 && error.code === "ADMIN_ACCESS_NOT_CONFIGURED",
   );
-  assert.throws(
-    () => authenticateAdminRequest(request({
-      "oai-authenticated-user-id": "intruder-1",
-      "oai-authenticated-user-email": "intruder@example.com",
-    }), { allowedEmails: "operator@example.com" }),
+  await assert.rejects(
+    () => authenticateAdminRequest(request(), {
+      allowedEmails: "operator@example.com",
+      async readSession() {
+        return { ...authenticatedAccount, email: "intruder@example.com" };
+      },
+    }),
     (error) => error instanceof ApiError && error.status === 403 && error.code === "ADMIN_FORBIDDEN",
   );
 });
 
-test("admin authentication accepts only the allowlisted identity and decodes its display name", () => {
-  const actor = authenticateAdminRequest(request({
-    "oai-authenticated-user-id": "operator-1",
-    "oai-authenticated-user-email": "Operator@Example.com",
-    "oai-authenticated-user-full-name": "Jes%C3%BAs%20D%C3%ADaz",
-    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
-  }), { allowedEmails: "operator@example.com" });
+test("admin authentication accepts only the allowlisted account session", async () => {
+  const actor = await authenticateAdminRequest(request({
+    "oai-authenticated-user-id": "forged-header",
+    "oai-authenticated-user-email": "forged@example.com",
+  }), {
+    allowedEmails: "operator@example.com",
+    async readSession() { return authenticatedAccount; },
+  });
   assert.deepEqual(actor, {
     userId: "operator-1",
     email: "operator@example.com",

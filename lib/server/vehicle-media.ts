@@ -10,7 +10,7 @@ import {
   MediaPolicyError,
 } from "@/lib/media/index.mjs";
 import { adminApiRoute, adminData, hashAdminPayload } from "./admin-api";
-import type { AdminApiActor } from "./admin-auth";
+import type { AdminApiActor, AdminAuthOptions } from "./admin-auth";
 import {
   ApiError,
   apiRoute,
@@ -22,6 +22,7 @@ import {
 type MediaRepository = D1VehicleMediaRepository;
 
 export type VehicleMediaRuntime = Readonly<{
+  auth?: AdminAuthOptions;
   repository?: MediaRepository;
   objects?: ObjectStore;
   now?: Date;
@@ -179,7 +180,7 @@ export function adminVehicleMediaCollection(
       throw new ApiError(405, "METHOD_NOT_ALLOWED", "El método no está permitido.");
     }
     return uploadVehicleMedia(request, vehicleId, actor, repository, runtime);
-  });
+  }, runtime.auth);
 }
 
 async function uploadVehicleMedia(
@@ -346,7 +347,7 @@ export function adminVehicleMediaItem(
     );
     if (!result.ok) mutationError(result);
     return adminMediaData(result.record.map(mediaDto), result.vehicleVersion);
-  });
+  }, runtime.auth);
 }
 
 export function publicVehicleMedia(

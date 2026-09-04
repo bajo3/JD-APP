@@ -59,6 +59,16 @@ test.after(() => {
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
 });
 
+const adminAuth = Object.freeze({
+  async readSession() {
+    return {
+      id: "user-1", email: "admin@example.com", name: "Operador", phoneNormalized: null,
+      leadId: null, status: "ACTIVE", failedAttempts: 0, lockedUntil: null,
+      lastLoginAt: null, version: 1, createdAt: AT.toISOString(),
+    };
+  },
+});
+
 function concat(...arrays) {
   const result = new Uint8Array(arrays.reduce((total, item) => total + item.length, 0));
   let offset = 0;
@@ -180,7 +190,7 @@ function fakeBackend(options = {}) {
     async deleteObject() {},
   };
   return {
-    runtime: { repository, objects, now: AT, idGenerator: () => "media-1" },
+    runtime: { auth: adminAuth, repository, objects, now: AT, idGenerator: () => "media-1" },
     counts: () => ({ putCount, deleteCount, rows: rows.size }),
     rows: () => [...rows.values()],
     storedBody: () => stored["media-1"]?.body,
@@ -215,7 +225,7 @@ test("same idempotency key with a different photo conflicts", async () => {
   const conflict = await publicAppraisalPhotoUpload(
     uploadRequest(jpegWithGps(), { "X-Capture-Type": "REAR" }),
     "TAS-ABC123",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(conflict.status, 409);
   const body = await conflict.json();
@@ -253,7 +263,7 @@ test("invalid code, type, size, capture and missing key fail closed", async () =
   const heic = await publicAppraisalPhotoUpload(
     uploadRequest(jpegWithGps(), { "Content-Type": "image/heic" }),
     "TAS-ABC123",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(heic.status, 415);
 
@@ -296,7 +306,7 @@ test("admin photo listing and bytes delivery require an authenticated panel user
   const anonList = await adminAppraisalPhotoList(
     new Request("http://localhost/api/v1/admin/appraisals/appraisal-1/photos"),
     "appraisal-1",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(anonList.status, 401);
 
@@ -304,7 +314,7 @@ test("admin photo listing and bytes delivery require an authenticated panel user
     new Request("http://localhost/api/v1/admin/appraisals/appraisal-1/photos/media-1"),
     "appraisal-1",
     "media-1",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(anonBytes.status, 401);
 

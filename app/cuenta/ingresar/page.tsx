@@ -10,7 +10,17 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-export default function LoginPage() {
+type LoginPageProps = Readonly<{
+  searchParams: Promise<{ volver?: string | string[] }>;
+}>;
+
+function safeReturnTo(value: string | string[] | undefined): string {
+  const candidate = typeof value === "string" ? value : "";
+  return candidate.startsWith("/") && !candidate.startsWith("//") ? candidate : "/cuenta";
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const next = safeReturnTo((await searchParams).volver);
   return (
     <PublicShell>
       <main id="contenido" className="public-page form-page">
@@ -19,7 +29,7 @@ export default function LoginPage() {
           <h1>Ingresá</h1>
           <p>Volvé a lo que estabas mirando y seguí desde ahí.</p>
         </div>
-        <AccountAuthForm mode="login" />
+        <AccountAuthForm mode="login" next={next} />
       </main>
     </PublicShell>
   );

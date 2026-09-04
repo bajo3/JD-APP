@@ -1,15 +1,20 @@
 import type { MutationResult } from "@/lib/data/admin-repositories";
 import { AdminError } from "@/lib/admin";
 import { ApiError, apiRoute, json, requiredInteger, requiredString } from "./api";
-import { authenticateAdminRequest, type AdminApiActor } from "./admin-auth";
+import {
+  authenticateAdminRequest,
+  type AdminApiActor,
+  type AdminAuthOptions,
+} from "./admin-auth";
 
 export async function adminApiRoute(
   request: Request,
   run: (actor: AdminApiActor) => Promise<Response>,
+  authOptions?: AdminAuthOptions,
 ): Promise<Response> {
   return apiRoute(async () => {
     try {
-      return await run(authenticateAdminRequest(request));
+      return await run(await authenticateAdminRequest(request, authOptions));
     } catch (error) {
       if (error instanceof AdminError) {
         throw new ApiError(error.status, error.code, error.message);

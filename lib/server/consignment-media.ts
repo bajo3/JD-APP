@@ -13,6 +13,7 @@ import {
   stripImageMetadata,
 } from "@/lib/media/index.mjs";
 import { adminApiRoute, adminData } from "./admin-api";
+import type { AdminAuthOptions } from "./admin-auth";
 import {
   ApiError,
   apiRoute,
@@ -23,6 +24,7 @@ import {
 type MediaRepository = D1ConsignmentMediaRepository;
 
 export type ConsignmentMediaRuntime = Readonly<{
+  auth?: AdminAuthOptions;
   repository?: MediaRepository;
   objects?: ObjectStore;
   now?: Date;
@@ -372,7 +374,7 @@ export function adminConsignmentPhotoList(
       throw new ApiError(404, "ADMIN_RESOURCE_NOT_FOUND", "La consignación no existe.");
     }
     return adminData((await repository.listReadyByConsignment(consignmentId)).map(adminMediaDto));
-  });
+  }, runtime.auth);
 }
 
 export function adminConsignmentPhotoBytes(
@@ -407,5 +409,5 @@ export function adminConsignmentPhotoBytes(
         "X-Content-Type-Options": "nosniff",
       },
     });
-  });
+  }, runtime.auth);
 }

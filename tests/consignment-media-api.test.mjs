@@ -61,6 +61,16 @@ test.after(() => {
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
 });
 
+const adminAuth = Object.freeze({
+  async readSession() {
+    return {
+      id: "user-1", email: "admin@example.com", name: "Operador", phoneNormalized: null,
+      leadId: null, status: "ACTIVE", failedAttempts: 0, lockedUntil: null,
+      lastLoginAt: null, version: 1, createdAt: AT.toISOString(),
+    };
+  },
+});
+
 function concat(...arrays) {
   const result = new Uint8Array(arrays.reduce((total, item) => total + item.length, 0));
   let offset = 0;
@@ -237,7 +247,7 @@ function fakeBackend(options = {}) {
     },
   };
   return {
-    runtime: { repository, objects, now: AT, idGenerator: () => "media-1" },
+    runtime: { auth: adminAuth, repository, objects, now: AT, idGenerator: () => "media-1" },
     counts: () => ({ putCount, deleteCount, rows: [...rows.values()].filter((r) => r.status !== "ARCHIVED").length }),
     rows: () => [...rows.values()],
     archivedCount: () => archived.length,
@@ -300,7 +310,7 @@ test("la misma clave con otra foto conflictúa", async () => {
   const conflict = await publicConsignmentPhotoUpload(
     uploadRequest(jpegWithGps(), { "X-Capture-Type": "REAR" }),
     "CON-ABC123",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(conflict.status, 409);
   const body = await conflict.json();
@@ -331,7 +341,7 @@ test("código, tipo, tamaño y captura inválidos fallan cerrados", async () => 
   const heic = await publicConsignmentPhotoUpload(
     uploadRequest(jpegWithGps(), { "Content-Type": "image/heic" }),
     "CON-ABC123",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(heic.status, 415);
 
@@ -425,7 +435,7 @@ test("el listado y los bytes administrativos exigen sesión y sólo entregan REA
   const anonList = await adminConsignmentPhotoList(
     new Request("http://localhost/api/v1/admin/consignments/consignment-1/photos"),
     "consignment-1",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(anonList.status, 401);
 
@@ -433,7 +443,7 @@ test("el listado y los bytes administrativos exigen sesión y sólo entregan REA
     new Request("http://localhost/api/v1/admin/consignments/consignment-1/photos/media-1"),
     "consignment-1",
     "media-1",
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(anonBytes.status, 401);
 

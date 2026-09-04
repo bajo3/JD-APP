@@ -1,14 +1,18 @@
-type AuthenticatedChatGPTUser = {
+import type { CustomerAccountRecord } from "@/lib/data/customer-account-repository";
+
+type AuthenticatedPanelUser = {
   userId: string;
   displayName: string;
   email: string;
   fullName: string | null;
 };
 
-type RequireUser = (returnTo: string) => Promise<AuthenticatedChatGPTUser>;
+type ReadAccountSession = (
+  cookieHeader: string | null,
+) => Promise<CustomerAccountRecord | null>;
 
 export type PanelUser = Readonly<
-  AuthenticatedChatGPTUser & {
+  AuthenticatedPanelUser & {
     normalizedEmail: string;
   }
 >;
@@ -16,6 +20,17 @@ export type PanelUser = Readonly<
 export type PanelAccessErrorCode =
   | "PANEL_ACCESS_NOT_CONFIGURED"
   | "PANEL_ACCESS_DENIED";
+
+/** Señal sin dependencia de UI: el layout del panel decide cómo redirigir. */
+export class PanelAuthenticationRequired extends Error {
+  readonly returnTo: string;
+
+  constructor(returnTo: string) {
+    super("Iniciá sesión para usar el panel interno.");
+    this.name = "PanelAuthenticationRequired";
+    this.returnTo = returnTo;
+  }
+}
 
 export class PanelAccessError extends Error {
   readonly code: PanelAccessErrorCode;
@@ -33,7 +48,9 @@ export class PanelAccessError extends Error {
 
 export type PanelAuthDependencies = {
   allowedEmails?: string | undefined;
-  requireUser?: RequireUser;
+  readSession?: ReadAccountSession;
+  cookieHeader?: string | null;
+  redirect?: (destination: string) => never;
 };
 
 const EMAIL_PATTERN = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
@@ -71,32 +88,55 @@ export function isPanelEmailAllowed(
 }
 
 /**
- * Authenticates through the starter SIWC helper, then applies the independent
- * business allowlist. The SIWC helper owns sign-in and callback behavior.
+ * La identidad del panel es una sesión propia de cuenta, guardada en una
+ * cookie HttpOnly. La allowlist sigue siendo una segunda barrera independiente:
+ * tener una cuenta no concede acceso interno por sí solo.
  */
 export async function requirePanelUser(
   returnTo = "/panel",
   dependencies: PanelAuthDependencies = {},
 ): Promise<PanelUser> {
-  let requireUser = dependencies.requireUser;
-  if (!requireUser) {
-    const chatGPTAuth = await import("../../app/chatgpt-auth");
-    requireUser = chatGPTAuth.requireChatGPTUser;
+  const cookieHeader = dependencies.cookieHeader !== undefined
+    ? dependencies.cookieHeader
+    : dependencies.readSession
+      ? null
+      : await currentCookieHeader();
+  const account = await (dependencies.readSession ?? readCurrentAccount)(
+    cookieHeader,
+  );
+  if (!account) {
+    const destination = safeReturnTo(returnTo);
+    if (dependencies.redirect) return dependencies.redirect(destination);
+    throw new PanelAuthenticationRequired(destination);
   }
 
-  // Authentication runs first so anonymous requests follow the starter's SIWC
-  // redirect. Do not catch its redirect response here.
-  const user = await requireUser(returnTo);
   const configuredValue =
     dependencies.allowedEmails ?? process.env.PANEL_ALLOWED_EMAILS;
-  if (!isPanelEmailAllowed(user.email, configuredValue)) {
+  if (!isPanelEmailAllowed(account.email, configuredValue)) {
     throw new PanelAccessError("PANEL_ACCESS_DENIED");
   }
 
   return Object.freeze({
-    ...user,
-    normalizedEmail: normalizeEmail(user.email),
+    userId: account.id,
+    displayName: account.name.trim() || account.email,
+    email: account.email,
+    fullName: null,
+    normalizedEmail: normalizeEmail(account.email),
   });
+}
+
+async function currentCookieHeader(): Promise<string | null> {
+  const { headers } = await import("next/headers");
+  return (await headers()).get("cookie");
+}
+
+async function readCurrentAccount(cookieHeader: string | null): Promise<CustomerAccountRecord | null> {
+  const { readAccountSessionFromCookie } = await import("./account-api");
+  return readAccountSessionFromCookie(cookieHeader);
+}
+
+function safeReturnTo(value: string): string {
+  return value.startsWith("/") && !value.startsWith("//") ? value : "/panel";
 }
 
 function normalizeEmail(value: string): string {

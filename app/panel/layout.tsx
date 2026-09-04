@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
-import { chatGPTSignOutPath } from "../chatgpt-auth";
+import { redirect } from "next/navigation";
+import { LogoutButton } from "../_components/AccountActions";
 import {
+  PanelAuthenticationRequired,
   PanelAccessError,
   requirePanelUser,
 } from "@/lib/server/panel-auth";
@@ -18,6 +20,9 @@ export default async function PanelLayout({ children }: PanelLayoutProps) {
   try {
     user = await requirePanelUser("/panel");
   } catch (error) {
+    if (error instanceof PanelAuthenticationRequired) {
+      redirect(`/cuenta/ingresar?volver=${encodeURIComponent(error.returnTo)}`);
+    }
     if (error instanceof PanelAccessError) {
       return <PanelProtectedState code={error.code} />;
     }
@@ -45,12 +50,7 @@ export default async function PanelLayout({ children }: PanelLayoutProps) {
           <span className="hidden text-[#66716e] sm:inline">
             {user.displayName}
           </span>
-          <a
-            className="font-bold text-[#c94f24] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#e86636]"
-            href={chatGPTSignOutPath("/")}
-          >
-            Cerrar sesión
-          </a>
+          <LogoutButton />
         </div>
       </header>
       {children}

@@ -8,11 +8,18 @@ import {
   requirePanelUser,
 } from "../lib/server/panel-auth.ts";
 
-const authenticatedUser = Object.freeze({
-  userId: "user-test-1",
-  displayName: "Operador",
+const authenticatedAccount = Object.freeze({
+  id: "user-test-1",
   email: "Operador@Example.com",
-  fullName: "Operador JDA",
+  name: "Operador JDA",
+  phoneNormalized: null,
+  leadId: null,
+  status: "ACTIVE",
+  failedAttempts: 0,
+  lockedUntil: null,
+  lastLoginAt: null,
+  version: 1,
+  createdAt: "2026-09-04T00:00:00.000Z",
 });
 
 test("panel allowlist normalizes case, whitespace and duplicates", () => {
@@ -39,17 +46,18 @@ test("missing, blank and malformed configuration fail closed", () => {
   }
 });
 
-test("requirePanelUser preserves SIWC identity for an allowed account", async () => {
-  let requestedReturnTo = null;
+test("requirePanelUser derives the panel identity from an allowed account session", async () => {
+  let receivedCookie = null;
   const user = await requirePanelUser("/panel", {
     allowedEmails: "operador@example.com",
-    async requireUser(returnTo) {
-      requestedReturnTo = returnTo;
-      return authenticatedUser;
+    cookieHeader: "jda_session=test-token",
+    async readSession(cookieHeader) {
+      receivedCookie = cookieHeader;
+      return authenticatedAccount;
     },
   });
-  assert.equal(requestedReturnTo, "/panel");
-  assert.equal(user.userId, authenticatedUser.userId);
+  assert.equal(receivedCookie, "jda_session=test-token");
+  assert.equal(user.userId, authenticatedAccount.id);
   assert.equal(user.normalizedEmail, "operador@example.com");
   assert.ok(Object.isFrozen(user));
 });
@@ -60,8 +68,8 @@ test("denied access does not leak the configured allowlist", async () => {
     () =>
       requirePanelUser("/panel", {
         allowedEmails: configured,
-        async requireUser() {
-          return authenticatedUser;
+        async readSession() {
+          return authenticatedAccount;
         },
       }),
     (error) => {
@@ -73,16 +81,20 @@ test("denied access does not leak the configured allowlist", async () => {
   );
 });
 
-test("SIWC redirects and failures are not swallowed", async () => {
+test("an anonymous panel request redirects to the existing account login", async () => {
   const redirectSignal = new Error("NEXT_REDIRECT");
   await assert.rejects(
-    () =>
-      requirePanelUser("/panel", {
-        allowedEmails: "operador@example.com",
-        async requireUser() {
-          throw redirectSignal;
-        },
-      }),
+    () => requirePanelUser("/panel/tasaciones", {
+      allowedEmails: "operador@example.com",
+      cookieHeader: null,
+      async readSession() {
+        return null;
+      },
+      redirect(destination) {
+        assert.equal(destination, "/panel/tasaciones");
+        throw redirectSignal;
+      },
+    }),
     (error) => error === redirectSignal,
   );
 });

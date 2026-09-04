@@ -59,6 +59,16 @@ test.after(() => {
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
 });
 
+const adminAuth = Object.freeze({
+  async readSession() {
+    return {
+      id: "seller-1", email: "vendedor@jda.test", name: "Vendedor JDA", phoneNormalized: null,
+      leadId: null, status: "ACTIVE", failedAttempts: 0, lockedUntil: null,
+      lastLoginAt: null, version: 1, createdAt: "2026-09-04T00:00:00.000Z",
+    };
+  },
+});
+
 function sqliteD1(database) {
   function statement(sql, bindings = []) {
     return {
@@ -165,6 +175,7 @@ test("responder dentro de la ventana manda el mensaje por el circuito de salida"
     adminRequest("http://localhost/api/v1/admin/conversations/conv-open/reply", { text: "Hola, ¿en qué te ayudo?" }),
     "conv-open",
     {
+      auth: adminAuth,
       repository,
       now,
       client: { async sendText() { return { externalMessageId: "wamid.out.1" }; } },
@@ -186,7 +197,7 @@ test("responder fuera de la ventana de 24 horas sin plantilla responde 409 sin m
   const response = await adminConversationReply(
     adminRequest("http://localhost/api/v1/admin/conversations/conv-frio/reply", { text: "Hola" }),
     "conv-frio",
-    { repository, now },
+    { auth: adminAuth, repository, now },
   );
   assert.equal(response.status, 409);
   const body = await response.json();
@@ -207,7 +218,7 @@ test("responder sin Idempotency-Key se rechaza antes de tocar el circuito de sal
     },
     body: JSON.stringify({ text: "Hola" }),
   });
-  const response = await adminConversationReply(request, "conv-open", { repository, now: new Date("2026-09-03T12:00:00.000Z") });
+  const response = await adminConversationReply(request, "conv-open", { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") });
   assert.equal(response.status, 400);
 });
 
@@ -218,7 +229,7 @@ test("escalar a persona exige motivo y lo asienta en la línea de tiempo del lea
   const sinMotivo = await adminConversationHandling(
     adminRequest("http://localhost/api/v1/admin/conversations/conv-ai/handling", { handling: "HUMAN" }),
     "conv-ai",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(sinMotivo.status, 422);
 
@@ -228,7 +239,7 @@ test("escalar a persona exige motivo y lo asienta en la línea de tiempo del lea
       reason: "El cliente pidió hablar con una persona",
     }),
     "conv-ai",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(conMotivo.status, 200);
   const row = database.prepare("SELECT handling, assigned_to FROM inbox_conversation WHERE id = 'conv-ai'").get();
@@ -245,7 +256,7 @@ test("pasar al asesor se niega si la ventana está cerrada", async () => {
   const response = await adminConversationHandling(
     adminRequest("http://localhost/api/v1/admin/conversations/conv-frio/handling", { handling: "AI" }),
     "conv-frio",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(response.status, 409);
   const body = await response.json();
@@ -259,7 +270,7 @@ test("un modo inválido responde 422 sin tocar la conversación", async () => {
   const response = await adminConversationHandling(
     adminRequest("http://localhost/api/v1/admin/conversations/conv-open/handling", { handling: "ROBOT" }),
     "conv-open",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(response.status, 422);
   const row = database.prepare("SELECT handling FROM inbox_conversation WHERE id = 'conv-open'").get();
@@ -277,7 +288,7 @@ test("asignarme toma la identidad de la sesión y mantiene lead y conversación 
       assignedTo: "persona-inyectada@atacante.test",
     }),
     "conv-assign",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(response.status, 200);
   const row = database.prepare("SELECT assigned_to, version FROM inbox_conversation WHERE id = 'conv-assign'").get();
@@ -298,7 +309,7 @@ test("una versión vencida no asigna ni deja auditoría falsa", async () => {
       expectedVersion: 1,
     }),
     "conv-stale",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(response.status, 409);
   assert.equal((await response.json()).error.code, "ADMIN_VERSION_CONFLICT");
@@ -318,7 +329,7 @@ test("el seguimiento es un recordatorio interno futuro, persistido y asignado", 
       followUpAt: "2026-09-03T11:59:00.000Z",
     }),
     "conv-follow",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(past.status, 422);
 
@@ -330,7 +341,7 @@ test("el seguimiento es un recordatorio interno futuro, persistido y asignado", 
       note: "Llamar cuando salga del trabajo",
     }),
     "conv-follow",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(response.status, 200);
   const row = database.prepare(
@@ -362,7 +373,7 @@ test("marcar perdida exige motivo y cierra conversación, lead y recordatorio ju
       reason: " ",
     }),
     "conv-lost",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(missing.status, 422);
 
@@ -373,7 +384,7 @@ test("marcar perdida exige motivo y cierra conversación, lead y recordatorio ju
       reason: "Eligió otra unidad",
     }),
     "conv-lost",
-    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+    { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
   );
   assert.equal(response.status, 200);
   assert.deepEqual(
@@ -424,7 +435,7 @@ test("dar de alta una cuenta nueva la deja ACTIVE con el vendedor como responsab
     },
     body: JSON.stringify({ platform: "instagram", externalAccountId: "acc-ig-1", displayName: "JDA Instagram" }),
   });
-  const response = await adminChannelAccounts(request, { repository, now: new Date("2026-09-03T12:00:00.000Z") });
+  const response = await adminChannelAccounts(request, { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") });
   assert.equal(response.status, 201);
   const row = database.prepare(
     "SELECT platform, display_name, status, default_assignee FROM channel_account WHERE external_account_id = 'acc-ig-1'",
@@ -451,7 +462,7 @@ test("reconectar la misma cuenta actualiza en lugar de duplicar", async () => {
         },
         body: JSON.stringify(body),
       }),
-      { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+      { auth: adminAuth, repository, now: new Date("2026-09-03T12:00:00.000Z") },
     );
   await send();
   await send();
@@ -473,7 +484,7 @@ test("un platform inválido se rechaza sin escribir nada", async () => {
     },
     body: JSON.stringify({ platform: "carrier-pigeon", externalAccountId: "acc-3", displayName: "Palomas JDA" }),
   });
-  const response = await adminChannelAccounts(request, { repository });
+  const response = await adminChannelAccounts(request, { auth: adminAuth, repository });
   assert.equal(response.status, 422);
   const row = database.prepare("SELECT id FROM channel_account WHERE external_account_id = 'acc-3'").get();
   assert.equal(row, undefined);
@@ -482,7 +493,7 @@ test("un platform inválido se rechaza sin escribir nada", async () => {
 test("listar cuentas devuelve las cargadas", async () => {
   const database = seedDatabase();
   const repository = new D1ChannelInboxRepository(sqliteD1(database));
-  const response = await adminChannelAccounts(adminGet("http://localhost/api/v1/admin/channel-accounts"), { repository });
+  const response = await adminChannelAccounts(adminGet("http://localhost/api/v1/admin/channel-accounts"), { auth: adminAuth, repository });
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.data.length, 1);

@@ -1,7 +1,8 @@
 # Jesús Díaz Automotores
 
 Web/PWA mobile-first para Jesús Díaz Automotores (Tandil), construida sobre
-Next App Router + vinext/Sites. La V1 incluye catálogo demo, ficha de
+Next App Router. La migración del runtime de vinext/Cloudflare a Vercel está
+en curso y su contrato está en [MIGRACION_VERCEL.md](MIGRACION_VERCEL.md). La V1 incluye catálogo demo, ficha de
 vehículos, tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del
 Día, contacto/WhatsApp y un panel operativo protegido. La consignación
 virtual está implementada y endurecida, pero clasificada como **V1.1
@@ -167,8 +168,9 @@ ANTHROPIC_API_KEY=
 ```
 
 No inventar ni publicar un dominio, correo o condición comercial. El panel
-requiere el guard de acceso configurado para el entorno; no se implementa un
-login propio en las vistas. V1 usa una única allowlist de administradores:
+requiere una sesión válida de la cuenta propia y el guard de acceso configurado
+para el entorno: tener cuenta no concede acceso interno sin estar en la
+allowlist. V1 usa una única allowlist de administradores:
 todos los correos habilitados operan todo el panel, con auditoría por actor;
 los roles por función quedan para una versión posterior si el equipo crece.
 
@@ -263,7 +265,7 @@ app/panel/            # panel operativo protegido
 db/                  # schema/fixtures de persistencia
 lib/                 # dominio, casos de uso y acceso a datos
 public/              # favicon y assets públicos
-.openai/hosting.json # configuración de Sites y bindings
+MIGRACION_VERCEL.md # contrato y puertas de la migración de hosting
 ```
 
 La API versionada vive bajo `/api/v1` y está diseñada para ser reutilizable

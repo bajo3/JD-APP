@@ -36,7 +36,7 @@ import {
 } from "@/lib/admin";
 import { adminDependencies } from "./admin-adapter";
 import { adminApiRoute, adminData, hashAdminPayload, optionalEnum, requiredEnum, optionalIsoDate, idempotencyConflict } from "./admin-api";
-import type { AdminApiActor } from "./admin-auth";
+import type { AdminApiActor, AdminAuthOptions } from "./admin-auth";
 import type { ChannelInboxRepositoryLike } from "@/lib/data/channel-inbox-repository";
 import type { OutboundRuntime } from "./inbox-outbound";
 import {
@@ -53,6 +53,10 @@ import { normalizeAppraisalRuleset } from "@/lib/domain/appraisal-range.mjs";
 function dependencies(actor: AdminApiActor) {
   return adminDependencies(actor);
 }
+
+type AuthenticatedAdminRuntime = Readonly<{
+  auth?: AdminAuthOptions;
+}>;
 
 function statusFilter<T extends string>(request: Request, allowed: readonly T[]): T | undefined {
   const status = new URL(request.url).searchParams.get("status")?.trim();
@@ -268,7 +272,7 @@ export function adminLead(request: Request, id: string): Promise<Response> {
 export function adminConversationReply(
   request: Request,
   id: string,
-  runtime: OutboundRuntime = {},
+  runtime: OutboundRuntime & AuthenticatedAdminRuntime = {},
 ): Promise<Response> {
   return adminApiRoute(request, async (actor) => {
     const safeId = resourceId(id);
@@ -286,7 +290,7 @@ export function adminConversationReply(
       runtime,
     );
     return adminData(result);
-  });
+  }, runtime.auth);
 }
 
 /**
@@ -297,7 +301,7 @@ export function adminConversationReply(
 export function adminConversationHandling(
   request: Request,
   id: string,
-  runtime: OutboundRuntime = {},
+  runtime: OutboundRuntime & AuthenticatedAdminRuntime = {},
 ): Promise<Response> {
   return adminApiRoute(request, async (actor) => {
     const safeId = resourceId(id);
@@ -315,7 +319,7 @@ export function adminConversationHandling(
       return adminData({ handling: "AI" });
     }
     throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", { handling: "invalid_handling" });
-  });
+  }, runtime.auth);
 }
 
 /**
@@ -326,7 +330,7 @@ export function adminConversationHandling(
 export function adminConversationWorkflow(
   request: Request,
   id: string,
-  runtime: { repository?: ChannelInboxRepositoryLike; now?: Date } = {},
+  runtime: { repository?: ChannelInboxRepositoryLike; now?: Date } & AuthenticatedAdminRuntime = {},
 ): Promise<Response> {
   return adminApiRoute(request, async (actor) => {
     const safeId = resourceId(id);
@@ -396,7 +400,7 @@ export function adminConversationWorkflow(
       throw new ApiError(409, "LEAD_ALREADY_WON", "Una oportunidad ganada no puede marcarse como perdida.");
     }
     return adminData({ action, nextVersion: result.nextVersion });
-  });
+  }, runtime.auth);
 }
 
 /**
@@ -406,7 +410,7 @@ export function adminConversationWorkflow(
  */
 export function adminChannelAccounts(
   request: Request,
-  runtime: { repository?: ChannelInboxRepositoryLike; now?: Date } = {},
+  runtime: { repository?: ChannelInboxRepositoryLike; now?: Date } & AuthenticatedAdminRuntime = {},
 ): Promise<Response> {
   return adminApiRoute(request, async (actor) => {
     const { D1ChannelInboxRepository } = await import("@/lib/data/channel-inbox-repository");
@@ -435,7 +439,7 @@ export function adminChannelAccounts(
       updatedAt: now.toISOString(),
     });
     return adminData(result, { status: 201 });
-  });
+  }, runtime.auth);
 }
 
 export function adminAppraisals(request: Request): Promise<Response> {

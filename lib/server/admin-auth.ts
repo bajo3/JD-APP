@@ -1,5 +1,6 @@
 import { ApiError } from "./api";
 import { PanelAccessError, parsePanelAllowedEmails } from "./panel-auth";
+import type { CustomerAccountRecord } from "@/lib/data/customer-account-repository";
 
 export type AdminApiActor = Readonly<{
   userId: string;
@@ -7,19 +8,22 @@ export type AdminApiActor = Readonly<{
   displayName: string;
 }>;
 
-type AdminAuthOptions = {
+export type AdminAuthOptions = {
   allowedEmails?: string;
+  readSession?: (cookieHeader: string | null) => Promise<CustomerAccountRecord | null>;
 };
 
-export function authenticateAdminRequest(
+export async function authenticateAdminRequest(
   request: Request,
   options: AdminAuthOptions = {},
-): AdminApiActor {
-  const userId = request.headers.get("oai-authenticated-user-id")?.trim() ?? "";
-  const email = request.headers.get("oai-authenticated-user-email")?.trim().toLowerCase() ?? "";
-  if (!userId || !email) {
+): Promise<AdminApiActor> {
+  const account = await (options.readSession ?? readCurrentAccount)(
+    request.headers.get("cookie"),
+  );
+  if (!account) {
     throw new ApiError(401, "ADMIN_AUTH_REQUIRED", "Iniciá sesión para usar el panel interno.");
   }
+  const email = account.email.trim().toLowerCase();
 
   let allowed: readonly string[];
   try {
@@ -39,24 +43,13 @@ export function authenticateAdminRequest(
   }
 
   return Object.freeze({
-    userId,
+    userId: account.id,
     email,
-    displayName: authenticatedDisplayName(request, email),
+    displayName: account.name.trim() || email,
   });
 }
 
-function authenticatedDisplayName(request: Request, fallback: string): string {
-  const encoded = request.headers.get("oai-authenticated-user-full-name")?.trim();
-  if (
-    !encoded ||
-    request.headers.get("oai-authenticated-user-full-name-encoding") !==
-      "percent-encoded-utf-8"
-  ) {
-    return fallback;
-  }
-  try {
-    return decodeURIComponent(encoded).trim() || fallback;
-  } catch {
-    return fallback;
-  }
+async function readCurrentAccount(cookieHeader: string | null): Promise<CustomerAccountRecord | null> {
+  const { readAccountSessionFromCookie } = await import("./account-api");
+  return readAccountSessionFromCookie(cookieHeader);
 }

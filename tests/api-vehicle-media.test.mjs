@@ -63,6 +63,16 @@ test.after(() => {
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
 });
 
+const adminAuth = Object.freeze({
+  async readSession() {
+    return {
+      id: "user-1", email: "admin@example.com", name: "Operador", phoneNormalized: null,
+      leadId: null, status: "ACTIVE", failedAttempts: 0, lockedUntil: null,
+      lastLoginAt: null, version: 1, createdAt: AT.toISOString(),
+    };
+  },
+});
+
 function concat(...arrays) {
   const result = new Uint8Array(arrays.reduce((total, item) => total + item.length, 0));
   let offset = 0;
@@ -205,7 +215,7 @@ function fakeBackend(options = {}) {
     async getPrivateObject() { return null; },
   };
   return {
-    runtime: { repository, objects, now: AT, idGenerator: () => "media-1" },
+    runtime: { auth: adminAuth, repository, objects, now: AT, idGenerator: () => "media-1" },
     counts: () => ({ putCount, deleteCount, auditCount, rows: row ? 1 : 0 }),
     row: () => row,
     version: () => vehicleVersion,
@@ -318,7 +328,7 @@ test("anonymous upload fails closed without writing D1 or R2", async () => {
       body: validPng(),
     }),
     VEHICLE_ID,
-    backend.runtime,
+    { ...backend.runtime, auth: undefined },
   );
   assert.equal(response.status, 401);
   assert.deepEqual(backend.counts(), { putCount: 0, deleteCount: 0, auditCount: 0, rows: 0 });
@@ -346,7 +356,7 @@ test("D1 and fake R2 complete one atomic upload, audit and idempotent replay", a
     async deleteObject() {},
     async getStockObject() { return { body: new Blob([validPng()]).stream() }; },
   };
-  const runtime = { repository, objects, now: AT, idGenerator: () => "media-d1-1" };
+  const runtime = { auth: adminAuth, repository, objects, now: AT, idGenerator: () => "media-d1-1" };
   const created = await adminVehicleMediaCollection(uploadRequest(), VEHICLE_ID, runtime);
   assert.equal(created.status, 201);
   assert.equal(database.prepare("SELECT status FROM vehicle_media WHERE id = 'media-d1-1'").get().status, "READY");

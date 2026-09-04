@@ -24,6 +24,7 @@ test("panel does not implement custom sign-in or callback routes", async () => {
     false,
   );
   const state = await readFile(new URL("protected-state.tsx", panelRoot), "utf8");
-  assert.match(state, /chatGPTSignOutPath/);
+  assert.match(state, /LogoutButton/);
+  assert.doesNotMatch(state, /chatGPTSignOutPath/);
   assert.doesNotMatch(state, /callback|password|token|cookie/i);
 });

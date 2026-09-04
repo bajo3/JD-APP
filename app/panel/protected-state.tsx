@@ -1,4 +1,4 @@
-import { chatGPTSignOutPath } from "../chatgpt-auth";
+import { LogoutButton } from "../_components/AccountActions";
 import type { PanelAccessErrorCode } from "@/lib/server/panel-auth";
 
 type ProtectedStateProps = {
@@ -28,12 +28,9 @@ export function PanelProtectedState({ code }: ProtectedStateProps) {
             ? "La configuración de acceso todavía no está habilitada. Contactá al administrador del sitio."
             : "Tu cuenta inició sesión correctamente, pero no está autorizada para usar este espacio."}
         </p>
-        <a
-          className="mt-8 inline-flex min-h-11 items-center rounded-lg border border-white/20 px-5 text-sm font-bold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ff9973]"
-          href={chatGPTSignOutPath("/")}
-        >
-          Cerrar sesión
-        </a>
+        <div className="mt-8">
+          <LogoutButton />
+        </div>
       </section>
     </main>
   );
