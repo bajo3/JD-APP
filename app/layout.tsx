@@ -4,6 +4,10 @@ import { headers } from "next/headers";
 import { PwaRuntime } from "./_components/PwaRuntime";
 import "./globals.css";
 
+// Todas las superficies leen stock, sesiones o configuración comercial actual.
+// Evita que Next ejecute D1 durante el build sin el entorno de producción.
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 

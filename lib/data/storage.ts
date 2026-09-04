@@ -1,4 +1,4 @@
-import { getUploadsBucket } from "@/db";
+import { RemoteR2ObjectStore } from "@/lib/data/r2-remote";
 
 const MAX_APPRAISAL_IMAGE_BYTES = 10 * 1024 * 1024;
 // Only formats whose metadata the server strips before persisting; HEIC/AVIF
@@ -58,14 +58,13 @@ export class R2ObjectStore implements ObjectStore {
       throw new Error("UNSUPPORTED_STOCK_IMAGE_TYPE");
     }
     const key = `public/stock/${input.vehicleId}/${input.mediaId}`;
-    await getUploadsBucket().put(key, input.body, {
-      httpMetadata: { contentType: input.contentType },
-      customMetadata: {
-        vehicleId: input.vehicleId,
-        byteSize: String(input.byteSize),
-        sha256: input.sha256,
-        visibility: "public",
-      },
+    await remoteStore().putStockImage({
+      vehicleId: input.vehicleId,
+      mediaId: input.mediaId,
+      body: input.body,
+      contentType: input.contentType,
+      byteSize: input.byteSize,
+      sha256: input.sha256,
     });
     return key;
   }
@@ -86,13 +85,13 @@ export class R2ObjectStore implements ObjectStore {
     }
 
     const key = `private/appraisals/${input.appraisalId}/${input.mediaId}`;
-    await getUploadsBucket().put(key, input.body, {
-      httpMetadata: { contentType: input.contentType },
-      customMetadata: {
-        appraisalId: input.appraisalId,
-        sha256: input.sha256,
-        visibility: "private",
-      },
+    await remoteStore().putPrivateAppraisalImage({
+      appraisalId: input.appraisalId,
+      mediaId: input.mediaId,
+      body: input.body,
+      contentType: input.contentType,
+      byteSize: input.byteSize,
+      sha256: input.sha256,
     });
     return key;
   }
@@ -114,13 +113,13 @@ export class R2ObjectStore implements ObjectStore {
       throw new Error("CONSIGNMENT_IMAGE_SIZE_OUT_OF_RANGE");
     }
     const key = `private/consignments/${input.consignmentId}/${input.mediaId}`;
-    await getUploadsBucket().put(key, input.body, {
-      httpMetadata: { contentType: input.contentType },
-      customMetadata: {
-        consignmentId: input.consignmentId,
-        sha256: input.sha256,
-        visibility: "private",
-      },
+    await remoteStore().putPrivateConsignmentImage({
+      consignmentId: input.consignmentId,
+      mediaId: input.mediaId,
+      body: input.body,
+      contentType: input.contentType,
+      byteSize: input.byteSize,
+      sha256: input.sha256,
     });
     return key;
   }
@@ -129,21 +128,39 @@ export class R2ObjectStore implements ObjectStore {
     if (!key.startsWith("public/stock/")) {
       throw new Error("STOCK_OBJECT_KEY_REQUIRED");
     }
-    return getUploadsBucket().get(key);
+    return remoteStore().getStockObject(key);
   }
 
   getPrivateObject(key: string): Promise<R2ObjectBody | null> {
     if (!key.startsWith("private/")) {
       throw new Error("PRIVATE_OBJECT_KEY_REQUIRED");
     }
-    return getUploadsBucket().get(key);
+    return remoteStore().getPrivateObject(key);
   }
 
   async deleteObject(key: string): Promise<void> {
-    await getUploadsBucket().delete(key);
+    await remoteStore().deleteObject(key);
   }
 }
 
 // The app owns authorization and signed-delivery policy. This adapter only
 // persists private bytes; it never constructs a public URL for appraisal media.
 export const objectStore: ObjectStore = new R2ObjectStore();
+
+let remote: RemoteR2ObjectStore | undefined;
+
+function remoteStore(): RemoteR2ObjectStore {
+  remote ??= new RemoteR2ObjectStore({
+    endpoint: requiredEnvironment("CLOUDFLARE_R2_ENDPOINT"),
+    bucket: requiredEnvironment("CLOUDFLARE_R2_BUCKET"),
+    accessKeyId: requiredEnvironment("CLOUDFLARE_R2_ACCESS_KEY_ID"),
+    secretAccessKey: requiredEnvironment("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+  });
+  return remote;
+}
+
+function requiredEnvironment(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`La configuración requerida ${name} no está disponible.`);
+  return value;
+}

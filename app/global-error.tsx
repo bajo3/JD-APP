@@ -1,2 +1,0 @@
-"use client";
-export default function GlobalError({reset}:{error:Error&{digest?:string};reset:()=>void}){return <html lang="es"><body><main className="state-page"><span className="state-code">!</span><p className="eyebrow">JESÚS DÍAZ AUTOMOTORES</p><h1>Estamos haciendo unos ajustes.</h1><p>Podés intentar cargar la aplicación nuevamente.</p><button className="primary-button" onClick={()=>reset()}>Reintentar <span>↻</span></button></main></body></html>}

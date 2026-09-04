@@ -1,4 +1,9 @@
 import { adminChannelAccounts } from "@/lib/server/admin-handlers";
 
-export const GET = adminChannelAccounts;
-export const POST = adminChannelAccounts;
+export function GET(request: Request): Promise<Response> {
+  return adminChannelAccounts(request);
+}
+
+export function POST(request: Request): Promise<Response> {
+  return adminChannelAccounts(request);
+}

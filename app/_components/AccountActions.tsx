@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 /** Cierra la sesión en el servidor antes de soltar la pantalla privada. */
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
   return (
     <button
       type="button"
@@ -15,7 +17,8 @@ export function LogoutButton() {
         try {
           await fetch("/api/v1/account/sessions", { method: "DELETE" });
         } finally {
-          window.location.assign("/");
+          router.replace("/");
+          router.refresh();
         }
       }}
     >

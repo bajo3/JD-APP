@@ -1,7 +1,3 @@
-declare module "cloudflare:workers" {
-  export const env: Record<string, unknown>;
-}
-
 interface D1Result<T = Record<string, unknown>> {
   results: T[];
   success: boolean;

@@ -1,8 +1,9 @@
 # Jesús Díaz Automotores
 
 Web/PWA mobile-first para Jesús Díaz Automotores (Tandil), construida sobre
-Next App Router. La migración del runtime de vinext/Cloudflare a Vercel está
-en curso y su contrato está en [MIGRACION_VERCEL.md](MIGRACION_VERCEL.md). La V1 incluye catálogo demo, ficha de
+Next App Router. El runtime ya es compatible con Vercel; faltan las pruebas
+privadas contra D1/R2 remotos antes de conectar el repositorio a producción.
+El contrato y sus puertas están en [MIGRACION_VERCEL.md](MIGRACION_VERCEL.md). La V1 incluye catálogo demo, ficha de
 vehículos, tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del
 Día, contacto/WhatsApp y un panel operativo protegido. La consignación
 virtual está implementada y endurecida, pero clasificada como **V1.1
@@ -34,22 +35,17 @@ Requiere Node.js `>=22.13.0`.
 ```bash
 npm install
 npm run dev       # desarrollo local
-npm test          # pruebas configuradas del starter
-npm run build     # build de producción Sites/vinext
+npm test          # build de producción + pruebas
+npm run build     # build de producción Next.js
 ```
 
-Preview del build de producción con el Worker real y la D1 local. En Windows
-`npm start` falla con `ERR_UNSUPPORTED_ESM_URL_SCHEME`, así que el preview se
-hace con Wrangler; el `--persist-to` es obligatorio: sin él, Wrangler resuelve
-el estado relativo al config de `dist/server` y crea una base vacía:
+Para revisar un build local, cargá las variables remotas requeridas en un
+`.env` ignorado y usá el servidor de Next:
 
 ```bash
 npm run build
-npx wrangler dev --config dist/server/wrangler.json --port 8788 --persist-to .wrangler/state
+npm start
 ```
-
-Antes de reconstruir, detener el preview y los procesos `workerd`: con el
-servidor corriendo, `npm run build` falla con `EPERM` al limpiar `dist`.
 
 Para mostrar el recorrido completo hace falta una base DEMO fresca. El motor
 degrada a "consultar disponibilidad" cualquier unidad cuyo dato supere el umbral

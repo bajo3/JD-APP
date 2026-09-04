@@ -31,9 +31,13 @@ esta guía. No se crea un proyecto, no se vincula el checkout y no se ejecuta
 - `lib/data/r2-remote.ts` implementa y prueba el contrato S3 compatible de R2:
   mantiene claves y metadata de stock/piezas privadas, no crea URLs públicas y
   conserva la entrega privada bajo autorización de los servicios existentes.
-- Aún no se conecta desde `db/index.ts`: el checkout actual sigue usando el
-  binding local de Workers mientras se reemplaza el runtime. Esta separación
-  evita dejar roto el preview local a mitad de la migración.
+- El checkout ya usa Next.js 16.3.4: se retiraron Vinext, el Worker, Vite y el
+  plugin de Sites. `db/index.ts` y `objectStore` construyen los adaptadores
+  remotos sólo al atender una solicitud, por lo que un build no accede a
+  secretos ni a datos comerciales.
+- El build de producción nativo pasó con Node 24 y todas las rutas de negocio
+  quedaron dinámicas; falta probarlas contra un entorno privado que tenga las
+  credenciales reales de D1/R2 configuradas.
 
 ## Variables que deberá recibir Vercel
 
@@ -63,7 +67,7 @@ reutiliza una clave amplia de cuenta.
 
 ## Puertas antes de conectar GitHub con Vercel
 
-1. El build Next.js debe funcionar sin `cloudflare:workers`, Vinext ni Sites.
+1. El build Next.js funciona sin bindings de Workers, Vinext ni Sites.
 2. D1 remoto debe pasar pruebas de consulta, lote, conflicto e idempotencia.
 3. R2 remoto debe pasar uploads, compensación y entrega privada de fotos.
 4. El panel debe probar sesión propia, allowlist, denegación y cierre de sesión.
