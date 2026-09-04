@@ -149,6 +149,10 @@ RATE_LIMIT_PUBLIC_CONSIGNMENT_PHOTO=30/60
 RATE_LIMIT_PUBLIC_ACCOUNT_REGISTER=5/60
 RATE_LIMIT_PUBLIC_ACCOUNT_LOGIN=12/10
 
+# opcional; revisión/compensación de reservas de fotos de consignación.
+# Valor por defecto: 60 minutos (rango permitido: 1 a 10080).
+CONSIGNMENT_MEDIA_STALE_MINUTES=60
+
 # puente de mensajería (Zernio): secreto del webhook, mínimo 16 caracteres.
 # Sin él, POST /api/v1/webhooks/zernio responde 503 y no acepta ningún evento.
 ZERNIO_WEBHOOK_SECRET=
