@@ -7,6 +7,12 @@ fuente canónica. Vercel será el único hosting cuando se cumplan las puertas d
 esta guía. No se crea un proyecto, no se vincula el checkout y no se ejecuta
 `vercel --prod` antes de completar y verificar los adaptadores.
 
+El comando `npm run build` valida de forma automática que cualquier build de
+Vercel tenga panel, D1 y R2 configurados. Si falta una de esas variables, el
+build falla antes de publicar; fuera de Vercel la comprobación se omite para
+que las pruebas aisladas no requieran secretos. Zernio y Anthropic permanecen
+opcionales: sus endpoints se cierran con `503` cuando no están configurados.
+
 ## Contrato congelado
 
 - El runtime final será Next.js sobre Vercel; no habrá Vinext, Worker ni
@@ -76,7 +82,10 @@ reutiliza una clave amplia de cuenta.
 4. El panel debe probar sesión propia, allowlist, denegación y cierre de sesión.
 5. Deben pasar `npm test`, lint, TypeScript, `db:generate`, restore drill y una
    prueba manual de rutas críticas contra el entorno privado.
-6. Recién entonces se importa `bajo3/JD-APP` en Vercel, con `main` como rama de
+6. Cargar los nombres de `.env.example` en Vercel, con panel, D1 y R2 para
+   Preview y Production; las claves de Zernio y Anthropic sólo donde se use esa
+   integración. No copiar ni versionar valores en el repositorio.
+7. Recién entonces se importa `bajo3/JD-APP` en Vercel, con `main` como rama de
    producción. La integración GitHub generará previews por ramas y despliegues
    de producción por pushes a `main`.
 
