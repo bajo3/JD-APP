@@ -178,7 +178,7 @@ lo que la plataforma cobra o rechaza, cubierto por `tests/inbox-outbound.test.mj
 Falta: las plantillas concretas —que dependen de la aprobación de Meta— y la
 pantalla del panel que dispara todo esto.
 
-### F2 — Bandeja operativa — **cola, hilo y respuesta manual implementados**
+### F2 — Bandeja operativa — **implementada**
 
 Pantalla `/panel/conversaciones`: cola ordenada por prioridad de SLA —primero
 lo que nadie contestó desde el último mensaje del cliente, de lo más viejo
@@ -194,10 +194,23 @@ disciplina de clave de idempotencia estable que ya usan los demás formularios
 del panel. El interruptor de modo (atención humana / asesor) reutiliza
 `escalateToHuman` y `handOverToAdvisor` sin reglas nuevas.
 
-Falta de F2: asignación explícita desde la cola (hoy asignar ocurre al
-escalar, no hay un botón "asigname esta"), seguimiento programado, motivo de
-pérdida, y las métricas por canal/vehículo/vendedor sumadas al embudo
-existente.
+La cola permite que el usuario autenticado tome explícitamente una conversación
+sin aceptar un vendedor arbitrario desde el cliente. Conversación y lead
+vinculado conservan el mismo responsable y cada cambio usa la versión esperada,
+evento de lead y auditoría atribuida.
+
+El detalle permite programar, reprogramar o retirar un seguimiento. Es un
+**recordatorio interno** guardado en D1 y visible en la cola —incluido su estado
+vencido—; no llama a Zernio ni manda mensajes automáticamente. Marcar una
+oportunidad como perdida exige el motivo, cierra la conversación vinculada y
+retira el recordatorio pendiente.
+
+El resumen del panel suma desgloses de leads, contactados y ganados por canal,
+primer vehículo de interés y responsable actual. Usa una ventana exclusiva
+`[desde, hasta)`, hitos históricos de `lead_event` para que una pérdida posterior
+no borre un contacto previo, y grupos explícitos para los datos ausentes. La UI
+declara las reglas de atribución y conserva a la vista las métricas todavía no
+medidas.
 
 ### F3 — Asesor con herramientas — **capa de herramientas implementada**
 

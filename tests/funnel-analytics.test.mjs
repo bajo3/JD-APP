@@ -83,11 +83,15 @@ test("cada paso declara de qué registro sale y el resultado es inmutable", () =
 test("las consultas del embudo sólo leen tablas persistidas y respetan la ventana", async () => {
   const source = await readFile(new URL("../lib/server/funnel-data.ts", import.meta.url), "utf8");
   assert.match(source, /gte\(simulations\.createdAt, sinceIso\)/);
+  assert.match(source, /lt\(simulations\.createdAt, untilIso\)/);
   assert.match(source, /eq\(leadEvents\.type, "WHATSAPP_HANDOFF_CREATED"\)/);
   assert.match(source, /count\(distinct \$\{leadInterests\.leadId\}\)/);
   // Nothing here may invent activity: no random, no sampling, no defaults
   // that fabricate a number when a query returns nothing.
   assert.doesNotMatch(source, /Math\.random|estimate|sample/i);
+  assert.match(source, /breakdownQuery\(db, channelDimension\(\)/);
+  assert.match(source, /breakdownQuery\(db, vehicleDimension\(\)/);
+  assert.match(source, /breakdownQuery\(db, sellerDimension\(\)/);
 });
 
 test("el panel muestra el embudo y lo que todavía no mide", async () => {
@@ -96,4 +100,6 @@ test("el panel muestra el embudo y lo que todavía no mide", async () => {
   assert.match(page, /Sin medir todavía/);
   assert.match(page, /funnel\.empty/);
   assert.match(page, /Últimos 30 días/);
+  assert.match(page, /Leads por canal, vehículo y responsable/);
+  assert.match(page, /responsable refleja la asignación actual/);
 });

@@ -870,7 +870,7 @@ export async function getAdminLead(dependencies: AdminDependencies, id: string):
 
 const LEAD_TRANSITIONS: Readonly<Record<LeadStatus, readonly LeadStatus[]>> = {
   NEW: ["CONTACTED"],
-  CONTACTED: ["QUALIFIED"],
+  CONTACTED: ["QUALIFIED", "LOST"],
   QUALIFIED: ["WON", "LOST"],
   WON: [],
   LOST: [],

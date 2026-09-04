@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getChannelAccounts, getConversationQueue } from "@/lib/server/inbox-panel-data";
 import { ChannelAccountForm } from "../_components/ChannelAccountForm";
+import { ConversationAssignButton } from "../_components/ConversationAssignButton";
 import { PanelShell } from "../_components/PanelShell";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,12 @@ const SLA_LABEL: Record<string, string> = {
   soon: "Atender pronto",
   late: "Sin atender",
 };
+
+const dateTime = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  dateStyle: "short",
+  timeStyle: "short",
+});
 
 export default async function ConversacionesPage() {
   const [{ rows, waitingCount, lateCount }, accounts] = await Promise.all([
@@ -77,21 +84,35 @@ export default async function ConversacionesPage() {
             <ol className="demand-matches inbox-queue">
               {rows.map((row) => (
                 <li key={row.id}>
-                  <Link className="inbox-row-link" href={`/panel/conversaciones/${row.id}`}>
-                    <div className="demand-match-head">
-                      <span>{row.contactName}</span>
-                      <small>{PLATFORM_LABEL[row.platform] ?? row.platform} · {row.accountName}</small>
-                      <span className={`lead-validity${row.sla === "late" ? " is-expired" : ""}`}>
-                        {SLA_LABEL[row.sla]}
-                        {row.waitingMinutes !== null ? ` · ${row.waitingMinutes} min` : ""}
-                      </span>
-                    </div>
-                    {row.lastMessagePreview ? <p className="panel-muted">{row.lastMessagePreview}</p> : null}
-                    <small>
-                      {row.handling === "AI" ? "Atiende el asesor" : "Atención humana"}
-                      {row.assignedTo ? ` · Asignada a ${row.assignedTo}` : " · Sin asignar"}
-                    </small>
-                  </Link>
+                  <div className="inbox-row">
+                    <Link className="inbox-row-link" href={`/panel/conversaciones/${row.id}`}>
+                      <div className="demand-match-head">
+                        <span>{row.contactName}</span>
+                        <small>{PLATFORM_LABEL[row.platform] ?? row.platform} · {row.accountName}</small>
+                        <span className={`lead-validity${row.sla === "late" ? " is-expired" : ""}`}>
+                          {SLA_LABEL[row.sla]}
+                          {row.waitingMinutes !== null ? ` · ${row.waitingMinutes} min` : ""}
+                        </span>
+                      </div>
+                      {row.lastMessagePreview ? <p className="panel-muted">{row.lastMessagePreview}</p> : null}
+                      <small>
+                        {row.handling === "AI" ? "Atiende el asesor" : "Atención humana"}
+                        {row.assignedTo ? ` · Asignada a ${row.assignedTo}` : " · Sin asignar"}
+                      </small>
+                      {row.followUpAt ? (
+                        <small className={row.followUpOverdue ? "is-overdue" : ""}>
+                          Seguimiento: {dateTime.format(new Date(row.followUpAt))}
+                        </small>
+                      ) : null}
+                    </Link>
+                    {!row.assignedTo ? (
+                      <ConversationAssignButton
+                        conversationId={row.id}
+                        contactName={row.contactName}
+                        expectedVersion={row.version}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ol>

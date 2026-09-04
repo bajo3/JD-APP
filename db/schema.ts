@@ -774,6 +774,8 @@ export const inboxConversations = sqliteTable(
     status: text("status").notNull().default("OPEN"),
     handling: text("handling").notNull().default("HUMAN"),
     assignedTo: text("assigned_to"),
+    followUpAt: text("follow_up_at"),
+    followUpNote: text("follow_up_note"),
     lastInboundAt: text("last_inbound_at"),
     lastOutboundAt: text("last_outbound_at"),
     firstResponseAt: text("first_response_at"),
@@ -791,6 +793,7 @@ export const inboxConversations = sqliteTable(
       table.assignedTo,
       table.lastInboundAt,
     ),
+    index("idx_inbox_conversation_status_follow_up").on(table.status, table.followUpAt),
     index("idx_inbox_conversation_lead").on(table.leadId),
   ],
 );

@@ -97,6 +97,13 @@ const MIGRATIONS = [
   "0005_lucky_exiles.sql",
   "0006_nostalgic_scarlet_spider.sql",
   "0007_appraisal_media_capture.sql",
+  "0008_consignment_virtual.sql",
+  "0009_retire_unconfirmed_whatsapp.sql",
+  "0010_rate_limit_windows.sql",
+  "0011_silly_the_call.sql",
+  "0012_mysterious_forge.sql",
+  "0013_dizzy_pretty_boy.sql",
+  "0014_flat_preak.sql",
 ];
 
 function uniqueAliasQuery(sql, columns) {
@@ -380,13 +387,41 @@ test("el embudo del panel cuenta el recorrido que acaba de ocurrir", async () =>
   );
   assert.equal(leadResponse.status, 201);
 
-  const funnel = await getConversionFunnel({ db: access.db, now: NOW });
+  // The production schema owns creation timestamps through CURRENT_TIMESTAMP.
+  // Pin the persisted journey to this test's clock before applying the
+  // exclusive upper bound used by the analytics window.
+  database.prepare("UPDATE simulation SET created_at = ? WHERE id = 'e2e-simulation-1'").run(NOW.toISOString());
+  database.prepare("UPDATE lead SET created_at = ? WHERE id = 'e2e-funnel-lead-1'").run(NOW.toISOString());
+  database.prepare("UPDATE lead_interest SET created_at = ? WHERE lead_id = 'e2e-funnel-lead-1'").run(NOW.toISOString());
+
+  const funnel = await getConversionFunnel({ db: access.db, now: new Date(NOW.getTime() + 1) });
   const value = (key) => funnel.steps.find((step) => step.key === key).value;
   assert.equal(funnel.empty, false);
   assert.equal(value("simulations"), 1);
   assert.equal(value("linkedLeads"), 1);
   assert.equal(value("handoffs"), 0, "sin handoff registrado el paso queda en cero");
   assert.equal(value("contacted"), 0, "el lead nace en NEW hasta que el equipo lo mueve");
+  assert.equal(funnel.breakdowns.channels.find((row) => row.label === "SIMULADOR_WEB")?.leads, 1);
+  assert.equal(funnel.breakdowns.vehicles[0]?.leads, 1);
+  assert.notEqual(funnel.breakdowns.vehicles[0]?.label, "Sin vehículo");
+  assert.equal(funnel.breakdowns.sellers.find((row) => row.label === "Sin asignar")?.leads, 1);
+
+  // Contactar queda medido por el evento histórico aunque el estado mutable
+  // termine después en LOST.
+  const contactedAt = new Date(NOW.getTime() + 1).toISOString();
+  database.prepare(
+    `INSERT INTO lead_event (id, lead_id, type, actor_type, metadata_json, occurred_at)
+     VALUES ('event-contacted', 'e2e-funnel-lead-1', 'STATUS_CHANGED', 'USER', '{"to":"CONTACTED"}', ?)`,
+  ).run(contactedAt);
+  database.prepare(
+    `INSERT INTO lead_event (id, lead_id, type, actor_type, metadata_json, occurred_at)
+     VALUES ('event-lost', 'e2e-funnel-lead-1', 'STATUS_CHANGED', 'USER', '{"to":"LOST"}', ?)`,
+  ).run(contactedAt);
+  database.prepare("UPDATE lead SET status = 'LOST', lost_reason = 'Eligió otra unidad'").run();
+  const afterLoss = await getConversionFunnel({ db: access.db, now: new Date(NOW.getTime() + 2) });
+  assert.equal(afterLoss.steps.find((step) => step.key === "contacted").value, 1);
+  assert.equal(afterLoss.steps.find((step) => step.key === "won").value, 0);
+  assert.equal(afterLoss.breakdowns.channels[0]?.contacted, 1);
 
   // Fuera de la ventana el recorrido deja de contarse, no se estima.
   const muchLater = new Date(NOW.getTime() + 90 * 86_400_000);

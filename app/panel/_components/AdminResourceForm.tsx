@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 
 type Resource = "vehicle" | "lead" | "appraisal" | "consignment" | "finance" | "promotion";
 export type AdminFormRecord = Readonly<{
@@ -94,12 +94,7 @@ function formFields(resource: Resource, records: readonly AdminFormRecord[]) {
     </>;
   }
   if (resource === "lead") {
-    return <>
-      <RecordSelect records={records} label="Lead" />
-      <label>Próxima etapa<select name="nextStatus" required><option value="">Seleccionar</option><option value="CONTACTED">Contactado</option><option value="QUALIFIED">Calificado</option><option value="WON">Ganado</option><option value="LOST">Perdido</option></select></label>
-      <Field name="assignedTo" label="Asignar a" required={false} />
-      <Field name="lostReason" label="Motivo de pérdida (obligatorio si se marca Perdido)" required={false} />
-    </>;
+    return <LeadFields records={records} />;
   }
   if (resource === "appraisal") {
     return <>
@@ -265,6 +260,66 @@ function formTitle(resource: Resource): string {
 
 function RecordSelect({ records, label }: { records: readonly AdminFormRecord[]; label: string }) {
   return <label>{label}<select name="recordId" required><option value="">Seleccionar</option>{records.map((record) => <option key={record.id} value={record.id}>{record.label} · {record.status}</option>)}</select></label>;
+}
+
+const LEAD_STATUS_OPTIONS: Readonly<Record<string, readonly { value: string; label: string }[]>> = {
+  NEW: [{ value: "CONTACTED", label: "Contactado" }],
+  CONTACTED: [
+    { value: "QUALIFIED", label: "Calificado" },
+    { value: "LOST", label: "Perdido" },
+  ],
+  QUALIFIED: [
+    { value: "WON", label: "Ganado" },
+    { value: "LOST", label: "Perdido" },
+  ],
+  WON: [],
+  LOST: [],
+};
+
+function LeadFields({ records }: { records: readonly AdminFormRecord[] }) {
+  const [recordId, setRecordId] = useState("");
+  const [nextStatus, setNextStatus] = useState("");
+  const record = records.find((item) => item.id === recordId);
+  const options = record ? LEAD_STATUS_OPTIONS[record.status] ?? [] : [];
+  return (
+    <>
+      <label>
+        Lead
+        <select
+          name="recordId"
+          required
+          value={recordId}
+          onChange={(event) => {
+            setRecordId(event.target.value);
+            setNextStatus("");
+          }}
+        >
+          <option value="">Seleccionar</option>
+          {records.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.status}</option>)}
+        </select>
+      </label>
+      <label>
+        Próxima etapa
+        <select
+          name="nextStatus"
+          required
+          value={nextStatus}
+          disabled={!record || options.length === 0}
+          onChange={(event) => setNextStatus(event.target.value)}
+        >
+          <option value="">{record && options.length === 0 ? "Sin transiciones disponibles" : "Seleccionar"}</option>
+          {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+      <Field name="assignedTo" label="Asignar a" required={false} />
+      {nextStatus === "LOST" ? (
+        <label>
+          Motivo de pérdida
+          <textarea name="lostReason" required minLength={2} maxLength={500} rows={3} />
+        </label>
+      ) : null}
+    </>
+  );
 }
 
 function Field({ name, label, required = true, ...input }: { name: string; label: string; required?: boolean } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "name" | "required">) {

@@ -18,6 +18,10 @@ export type ConversationQueueRow = Readonly<{
   status: string;
   handling: string;
   assignedTo: string | null;
+  followUpAt: string | null;
+  followUpNote: string | null;
+  followUpOverdue: boolean;
+  version: number;
   leadId: string | null;
   accountName: string;
   lastMessagePreview: string | null;
@@ -94,6 +98,10 @@ export async function getConversationQueue(runtime: Runtime = {}): Promise<{
       status: row.status,
       handling: row.handling,
       assignedTo: row.assignedTo,
+      followUpAt: row.followUpAt,
+      followUpNote: row.followUpNote,
+      followUpOverdue: isFollowUpOverdue(row.followUpAt, now),
+      version: row.version,
       leadId: row.leadId,
       accountName: row.accountDisplayName,
       lastMessagePreview: row.lastMessageText ? row.lastMessageText.slice(0, 140) : null,
@@ -137,6 +145,10 @@ export async function getConversationThread(
       status: found.status,
       handling: found.handling,
       assignedTo: found.assignedTo,
+      followUpAt: found.followUpAt,
+      followUpNote: found.followUpNote,
+      followUpOverdue: isFollowUpOverdue(found.followUpAt, now),
+      version: found.version,
       leadId: found.leadId,
       accountName: found.accountDisplayName,
       lastMessagePreview: found.lastMessageText ? found.lastMessageText.slice(0, 140) : null,
@@ -145,6 +157,12 @@ export async function getConversationThread(
     },
     messages,
   };
+}
+
+function isFollowUpOverdue(followUpAt: string | null, now: Date): boolean {
+  if (!followUpAt) return false;
+  const timestamp = Date.parse(followUpAt);
+  return Number.isFinite(timestamp) && timestamp <= now.getTime();
 }
 
 /**

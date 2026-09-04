@@ -240,7 +240,8 @@ Las rutas viven bajo `/api/v1/account/**`.
 
 ## Panel interno
 
-- `/panel` — resumen operativo y embudo comercial de 30 días calculados desde D1.
+- `/panel` — resumen operativo, embudo comercial y desgloses por canal, vehículo y responsable calculados desde D1.
+- `/panel/conversaciones` — cola multicanal, asignación, seguimiento interno y respuesta manual.
 - `/panel/leads` — pipeline y cambios de etapa.
 - `/panel/stock` — alta y ciclo de publicación del inventario.
 - `/panel/tasaciones` — revisión humana y aprobación de rangos.

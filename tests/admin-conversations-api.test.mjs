@@ -46,7 +46,7 @@ registerHooks({
   },
 });
 
-const { adminConversationReply, adminConversationHandling, adminChannelAccounts } = await import(
+const { adminConversationReply, adminConversationHandling, adminConversationWorkflow, adminChannelAccounts } = await import(
   "../lib/server/admin-handlers.ts"
 );
 const { D1ChannelInboxRepository } = await import("../lib/data/channel-inbox-repository.ts");
@@ -94,8 +94,11 @@ function seedDatabase() {
   const database = new DatabaseSync(":memory:");
   for (const path of [
     "drizzle/0000_chemical_tiger_shark.sql",
+    "drizzle/0001_worried_valkyrie.sql",
+    "drizzle/0004_furry_ultimatum.sql",
     "drizzle/0010_rate_limit_windows.sql",
     "drizzle/0012_mysterious_forge.sql",
+    "drizzle/0014_flat_preak.sql",
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
@@ -261,6 +264,130 @@ test("un modo inválido responde 422 sin tocar la conversación", async () => {
   assert.equal(response.status, 422);
   const row = database.prepare("SELECT handling FROM inbox_conversation WHERE id = 'conv-open'").get();
   assert.equal(row.handling, "HUMAN");
+});
+
+test("asignarme toma la identidad de la sesión y mantiene lead y conversación alineados", async () => {
+  const database = seedDatabase();
+  conversation(database, { id: "conv-assign", lastInboundAt: "2026-09-03T11:00:00.000Z" });
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const response = await adminConversationWorkflow(
+    adminRequest("http://localhost/api/v1/admin/conversations/conv-assign/workflow", {
+      action: "assign-self",
+      expectedVersion: 1,
+      assignedTo: "persona-inyectada@atacante.test",
+    }),
+    "conv-assign",
+    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+  );
+  assert.equal(response.status, 200);
+  const row = database.prepare("SELECT assigned_to, version FROM inbox_conversation WHERE id = 'conv-assign'").get();
+  assert.deepEqual({ ...row }, { assigned_to: "vendedor@jda.test", version: 2 });
+  assert.equal(database.prepare("SELECT assigned_to FROM lead WHERE id = 'lead-1'").get().assigned_to, "vendedor@jda.test");
+  assert.equal(database.prepare("SELECT count(*) AS n FROM admin_audit_log WHERE resource_id = 'conv-assign'").get().n, 1);
+  assert.equal(database.prepare("SELECT type FROM lead_event WHERE lead_id = 'lead-1'").get().type, "INBOX_ASSIGNED");
+});
+
+test("una versión vencida no asigna ni deja auditoría falsa", async () => {
+  const database = seedDatabase();
+  conversation(database, { id: "conv-stale", lastInboundAt: "2026-09-03T11:00:00.000Z" });
+  database.prepare("UPDATE inbox_conversation SET version = 2 WHERE id = 'conv-stale'").run();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const response = await adminConversationWorkflow(
+    adminRequest("http://localhost/api/v1/admin/conversations/conv-stale/workflow", {
+      action: "assign-self",
+      expectedVersion: 1,
+    }),
+    "conv-stale",
+    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+  );
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error.code, "ADMIN_VERSION_CONFLICT");
+  assert.equal(database.prepare("SELECT assigned_to FROM inbox_conversation WHERE id = 'conv-stale'").get().assigned_to, null);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM admin_audit_log WHERE resource_id = 'conv-stale'").get().n, 0);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM lead_event").get().n, 0);
+});
+
+test("el seguimiento es un recordatorio interno futuro, persistido y asignado", async () => {
+  const database = seedDatabase();
+  conversation(database, { id: "conv-follow", lastInboundAt: "2026-09-03T11:00:00.000Z" });
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const past = await adminConversationWorkflow(
+    adminRequest("http://localhost/api/v1/admin/conversations/conv-follow/workflow", {
+      action: "schedule-follow-up",
+      expectedVersion: 1,
+      followUpAt: "2026-09-03T11:59:00.000Z",
+    }),
+    "conv-follow",
+    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+  );
+  assert.equal(past.status, 422);
+
+  const response = await adminConversationWorkflow(
+    adminRequest("http://localhost/api/v1/admin/conversations/conv-follow/workflow", {
+      action: "schedule-follow-up",
+      expectedVersion: 1,
+      followUpAt: "2026-09-04T15:30:00.000Z",
+      note: "Llamar cuando salga del trabajo",
+    }),
+    "conv-follow",
+    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+  );
+  assert.equal(response.status, 200);
+  const row = database.prepare(
+    "SELECT assigned_to, follow_up_at, follow_up_note, version FROM inbox_conversation WHERE id = 'conv-follow'",
+  ).get();
+  assert.deepEqual({ ...row }, {
+    assigned_to: "vendedor@jda.test",
+    follow_up_at: "2026-09-04T15:30:00.000Z",
+    follow_up_note: "Llamar cuando salga del trabajo",
+    version: 2,
+  });
+  assert.equal(database.prepare("SELECT assigned_to FROM lead WHERE id = 'lead-1'").get().assigned_to, "vendedor@jda.test");
+  const event = database.prepare("SELECT type, metadata_json FROM lead_event WHERE lead_id = 'lead-1'").get();
+  assert.equal(event.type, "FOLLOW_UP_SCHEDULED");
+  assert.deepEqual(JSON.parse(event.metadata_json), { dueAt: "2026-09-04T15:30:00.000Z", hasNote: true });
+});
+
+test("marcar perdida exige motivo y cierra conversación, lead y recordatorio juntos", async () => {
+  const database = seedDatabase();
+  conversation(database, { id: "conv-lost", lastInboundAt: "2026-09-03T11:00:00.000Z" });
+  database.prepare(
+    "UPDATE inbox_conversation SET follow_up_at = '2026-09-04T15:30:00.000Z', follow_up_note = 'Llamar' WHERE id = 'conv-lost'",
+  ).run();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const missing = await adminConversationWorkflow(
+    adminRequest("http://localhost/api/v1/admin/conversations/conv-lost/workflow", {
+      action: "mark-lost",
+      expectedVersion: 1,
+      reason: " ",
+    }),
+    "conv-lost",
+    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+  );
+  assert.equal(missing.status, 422);
+
+  const response = await adminConversationWorkflow(
+    adminRequest("http://localhost/api/v1/admin/conversations/conv-lost/workflow", {
+      action: "mark-lost",
+      expectedVersion: 1,
+      reason: "Eligió otra unidad",
+    }),
+    "conv-lost",
+    { repository, now: new Date("2026-09-03T12:00:00.000Z") },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    { ...database.prepare("SELECT status, follow_up_at, follow_up_note, version FROM inbox_conversation WHERE id = 'conv-lost'").get() },
+    { status: "CLOSED", follow_up_at: null, follow_up_note: null, version: 2 },
+  );
+  assert.deepEqual(
+    { ...database.prepare("SELECT status, lost_reason FROM lead WHERE id = 'lead-1'").get() },
+    { status: "LOST", lost_reason: "Eligió otra unidad" },
+  );
+  const audit = JSON.parse(database.prepare("SELECT summary_json FROM admin_audit_log WHERE resource_id = 'conv-lost'").get().summary_json);
+  assert.deepEqual(audit, { to: "LOST", hasLostReason: true });
+  const event = JSON.parse(database.prepare("SELECT metadata_json FROM lead_event WHERE lead_id = 'lead-1'").get().metadata_json);
+  assert.deepEqual(event, { to: "LOST", lostReason: "Eligió otra unidad" });
 });
 
 function adminGet(url) {

@@ -53,6 +53,8 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
               value={<a href={`tel:${lead.phone.replace(/[^\d+]/g, "")}`}>{lead.phone}</a>}
             />
             <Detail label="Estado" value={humanizeCode(lead.status)} />
+            <Detail label="Responsable" value={lead.assignedTo ?? "Sin asignar"} />
+            {lead.lostReason ? <Detail label="Motivo de pérdida" value={lead.lostReason} /> : null}
             <Detail label="Origen" value={humanizeCode(lead.source)} />
             <Detail label="Ingreso" value={<Timestamp value={lead.createdAt} />} />
             <Detail label="Actualizado" value={<Timestamp value={lead.updatedAt} />} />
@@ -182,6 +184,9 @@ function eventLabel(type: string): string {
     SIMULATION_LINKED: "Simulación vinculada",
     WHATSAPP_HANDOFF_CREATED: "WhatsApp preparado",
     STATUS_CHANGED: "Estado actualizado",
+    INBOX_ASSIGNED: "Conversación asignada",
+    FOLLOW_UP_SCHEDULED: "Seguimiento programado",
+    FOLLOW_UP_CLEARED: "Seguimiento retirado",
   };
   return labels[type] ?? type.replaceAll("_", " ").toLocaleLowerCase("es-AR");
 }
@@ -193,5 +198,8 @@ function humanizeCode(value: string): string {
 
 function eventSummary(actorType: string, metadata: Readonly<Record<string, unknown>>): string {
   const code = typeof metadata.handoffCode === "string" ? ` · ${metadata.handoffCode}` : "";
-  return `Actor: ${humanizeCode(actorType)}${code}`;
+  const loss = typeof metadata.lostReason === "string" ? ` · Motivo: ${metadata.lostReason}` : "";
+  const dueAt = typeof metadata.dueAt === "string" ? new Date(metadata.dueAt) : null;
+  const due = dueAt && Number.isFinite(dueAt.getTime()) ? ` · Para ${dateTime.format(dueAt)}` : "";
+  return `Actor: ${humanizeCode(actorType)}${code}${loss}${due}`;
 }

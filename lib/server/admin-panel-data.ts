@@ -113,6 +113,8 @@ export type SellerLeadDetailDto = Readonly<{
   phone: string;
   source: string;
   status: string;
+  assignedTo: string | null;
+  lostReason: string | null;
   createdAt: string;
   updatedAt: string;
   operation: SellerLeadOperation | null;

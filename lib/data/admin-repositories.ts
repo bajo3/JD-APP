@@ -334,7 +334,21 @@ export class D1AdminRepository {
       actor: input.actor, audit: input.audit, resourceType: "lead", resourceId: input.id,
       previousVersion: input.expectedVersion, nextVersion, table: "lead", versionColumn: "version",
     });
-    const [result] = await this.d1.batch([update, audit, event]);
+    const statements = [update, audit, event];
+    if (input.nextStatus === "LOST") {
+      statements.push(
+        this.d1
+          .prepare(
+            `UPDATE inbox_conversation
+                SET status = 'CLOSED', follow_up_at = NULL, follow_up_note = NULL,
+                    version = version + 1, updated_at = ?
+              WHERE lead_id = ? AND status != 'CLOSED'
+                AND EXISTS (SELECT 1 FROM lead WHERE id = ? AND version = ? AND status = 'LOST')`,
+          )
+          .bind(input.audit.occurredAt, input.id, input.id, nextVersion),
+      );
+    }
+    const [result] = await this.d1.batch(statements);
     if (changes(result) === 0) return this.currentConflict("lead", input.id, input.expectedVersion);
     const record = await this.findLeadById(input.id);
     return record ? { ok: true, record } : { ok: false, reason: "not_found" };

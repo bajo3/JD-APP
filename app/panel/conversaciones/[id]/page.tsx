@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getConversationThread } from "@/lib/server/inbox-panel-data";
 import { PanelShell } from "../../_components/PanelShell";
 import { ConversationReplyForm } from "../../_components/ConversationReplyForm";
+import { ConversationWorkflowForm } from "../../_components/ConversationWorkflowForm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -63,6 +64,15 @@ export default async function ConversationDetailPage({ params }: ConversationDet
 
         <ConversationReplyForm conversationId={conversation.id} handling={conversation.handling} />
       </section>
+
+      <ConversationWorkflowForm
+        conversationId={conversation.id}
+        expectedVersion={conversation.version}
+        assignedTo={conversation.assignedTo}
+        followUpAt={conversation.followUpAt}
+        followUpNote={conversation.followUpNote}
+        hasLead={conversation.leadId !== null}
+      />
     </PanelShell>
   );
 }

@@ -132,6 +132,9 @@ const ROW = Object.freeze({
   status: "OPEN",
   handling: "HUMAN",
   assignedTo: null,
+  followUpAt: "2026-09-03T11:30:00.000Z",
+  followUpNote: "Volver a llamar",
+  version: 1,
   leadId: "lead-1",
   leadName: "Marina Díaz",
   lastInboundAt: "2026-09-03T11:00:00.000Z",
@@ -149,6 +152,7 @@ test("la cola cuenta cuántas esperan y cuántas están sin atender", async () =
   assert.equal(rows.length, 1);
   assert.equal(rows[0].contactName, "Marina Díaz");
   assert.equal(rows[0].sla, "late");
+  assert.equal(rows[0].followUpOverdue, true);
   assert.equal(waitingCount, 1);
   assert.equal(lateCount, 1);
 });

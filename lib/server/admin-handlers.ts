@@ -248,6 +248,87 @@ export function adminConversationHandling(
 }
 
 /**
+ * Flujo operativo de la bandeja. Los recordatorios son internos: esta ruta no
+ * llama a Zernio ni envía mensajes. La identidad del responsable de
+ * "asignarme" sale siempre de la sesión autenticada.
+ */
+export function adminConversationWorkflow(
+  request: Request,
+  id: string,
+  runtime: { repository?: ChannelInboxRepositoryLike; now?: Date } = {},
+): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const safeId = resourceId(id);
+    const payload = await readJsonObject(request);
+    const expectedVersion = requiredInteger(payload, "expectedVersion", { min: 1 });
+    const action = requiredEnum(payload, "action", [
+      "assign-self",
+      "schedule-follow-up",
+      "clear-follow-up",
+      "mark-lost",
+    ] as const);
+    const now = runtime.now ?? new Date();
+    const { D1ChannelInboxRepository } = await import("@/lib/data/channel-inbox-repository");
+    const repository = runtime.repository ?? new D1ChannelInboxRepository();
+
+    let workflowAction;
+    if (action === "assign-self") {
+      workflowAction = { type: "ASSIGN" as const, assignedTo: actor.email };
+    } else if (action === "schedule-follow-up") {
+      const followUpAt = requiredString(payload, "followUpAt", { max: 40 });
+      const due = new Date(followUpAt);
+      if (!Number.isFinite(due.getTime()) || due.getTime() <= now.getTime()) {
+        throw new ApiError(422, "VALIDATION_ERROR", "El seguimiento debe quedar para una fecha futura.", {
+          followUpAt: "future_datetime_required",
+        });
+      }
+      if (due.getTime() > now.getTime() + 366 * 86_400_000) {
+        throw new ApiError(422, "VALIDATION_ERROR", "El seguimiento no puede programarse a más de un año.", {
+          followUpAt: "too_far",
+        });
+      }
+      workflowAction = {
+        type: "SCHEDULE_FOLLOW_UP" as const,
+        assignedTo: actor.email,
+        followUpAt: due.toISOString(),
+        note: optionalString(payload, "note", 500) ?? null,
+      };
+    } else if (action === "clear-follow-up") {
+      workflowAction = { type: "CLEAR_FOLLOW_UP" as const };
+    } else {
+      workflowAction = {
+        type: "MARK_LOST" as const,
+        reason: requiredString(payload, "reason", { min: 2, max: 500 }),
+      };
+    }
+
+    const result = await repository.updateConversationWorkflow({
+      conversationId: safeId,
+      expectedVersion,
+      action: workflowAction,
+      actor: { userId: actor.userId, email: actor.email },
+      updatedAt: now.toISOString(),
+    });
+    if (!result.ok) {
+      if (result.reason === "not_found") {
+        throw new ApiError(404, "CONVERSATION_NOT_FOUND", "La conversación no existe.");
+      }
+      if (result.reason === "conflict") {
+        throw new ApiError(409, "ADMIN_VERSION_CONFLICT", "La conversación cambió. Recargá antes de continuar.");
+      }
+      if (result.reason === "closed") {
+        throw new ApiError(409, "CONVERSATION_CLOSED", "La conversación ya está cerrada.");
+      }
+      if (result.reason === "lead_required") {
+        throw new ApiError(409, "LEAD_REQUIRED", "La conversación todavía no tiene un lead para marcar como perdido.");
+      }
+      throw new ApiError(409, "LEAD_ALREADY_WON", "Una oportunidad ganada no puede marcarse como perdida.");
+    }
+    return adminData({ action, nextVersion: result.nextVersion });
+  });
+}
+
+/**
  * Alta y listado de cuentas del canal (WhatsApp, Instagram, Messenger,
  * Telegram, SMS). Sin al menos una cuenta ACTIVE, el webhook no tiene a
  * quién enrutar un mensaje entrante y lo archiva como no enrutado.

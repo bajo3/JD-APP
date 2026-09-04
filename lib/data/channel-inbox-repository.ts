@@ -17,6 +17,16 @@ export type ConversationRecord = Readonly<{
   assignedTo: string | null;
 }>;
 
+export type ConversationWorkflowAction =
+  | Readonly<{ type: "ASSIGN"; assignedTo: string }>
+  | Readonly<{ type: "SCHEDULE_FOLLOW_UP"; assignedTo: string; followUpAt: string; note: string | null }>
+  | Readonly<{ type: "CLEAR_FOLLOW_UP" }>
+  | Readonly<{ type: "MARK_LOST"; reason: string }>;
+
+export type ConversationWorkflowResult =
+  | Readonly<{ ok: true; nextVersion: number }>
+  | Readonly<{ ok: false; reason: "not_found" | "conflict" | "closed" | "lead_required" | "won" }>;
+
 export type OutboundContext = Readonly<{
   id: string;
   provider: string;
@@ -450,6 +460,9 @@ export class D1ChannelInboxRepository {
       status: string;
       handling: string;
       assignedTo: string | null;
+      followUpAt: string | null;
+      followUpNote: string | null;
+      version: number;
       leadId: string | null;
       leadName: string | null;
       lastInboundAt: string | null;
@@ -461,7 +474,8 @@ export class D1ChannelInboxRepository {
     const result = await this.d1
       .prepare(
         `SELECT c.id, c.platform, c.participant_display_name, c.participant_phone_normalized,
-                c.status, c.handling, c.assigned_to, c.lead_id, l.name AS lead_name,
+                c.status, c.handling, c.assigned_to, c.follow_up_at, c.follow_up_note,
+                c.version, c.lead_id, l.name AS lead_name,
                 c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
                 (SELECT m.text FROM inbox_message m
                   WHERE m.conversation_id = c.id
@@ -491,6 +505,9 @@ export class D1ChannelInboxRepository {
       status: String(row.status),
       handling: String(row.handling),
       assignedTo: row.assigned_to === null ? null : String(row.assigned_to),
+      followUpAt: row.follow_up_at === null ? null : String(row.follow_up_at),
+      followUpNote: row.follow_up_note === null ? null : String(row.follow_up_note),
+      version: Number(row.version),
       leadId: row.lead_id === null ? null : String(row.lead_id),
       leadName: row.lead_name === null ? null : String(row.lead_name),
       lastInboundAt: row.last_inbound_at === null ? null : String(row.last_inbound_at),
@@ -513,6 +530,9 @@ export class D1ChannelInboxRepository {
     status: string;
     handling: string;
     assignedTo: string | null;
+    followUpAt: string | null;
+    followUpNote: string | null;
+    version: number;
     leadId: string | null;
     leadName: string | null;
     lastInboundAt: string | null;
@@ -523,7 +543,8 @@ export class D1ChannelInboxRepository {
     const row = await this.d1
       .prepare(
         `SELECT c.id, c.platform, c.participant_display_name, c.participant_phone_normalized,
-                c.status, c.handling, c.assigned_to, c.lead_id, l.name AS lead_name,
+                c.status, c.handling, c.assigned_to, c.follow_up_at, c.follow_up_note,
+                c.version, c.lead_id, l.name AS lead_name,
                 c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
                 (SELECT m.text FROM inbox_message m
                   WHERE m.conversation_id = c.id
@@ -545,6 +566,9 @@ export class D1ChannelInboxRepository {
       status: String(row.status),
       handling: String(row.handling),
       assignedTo: row.assigned_to === null ? null : String(row.assigned_to),
+      followUpAt: row.follow_up_at === null ? null : String(row.follow_up_at),
+      followUpNote: row.follow_up_note === null ? null : String(row.follow_up_note),
+      version: Number(row.version),
       leadId: row.lead_id === null ? null : String(row.lead_id),
       leadName: row.lead_name === null ? null : String(row.lead_name),
       lastInboundAt: row.last_inbound_at === null ? null : String(row.last_inbound_at),
@@ -552,6 +576,183 @@ export class D1ChannelInboxRepository {
       lastMessageText: row.last_message_text === null ? null : String(row.last_message_text),
       accountDisplayName: String(row.account_display_name),
     };
+  }
+
+  /**
+   * Acciones operativas de F2. La conversación es el candado CAS de toda la
+   * operación; las escrituras del lead y de auditoría sólo ocurren cuando ese
+   * candado avanzó a la versión esperada.
+   */
+  async updateConversationWorkflow(input: {
+    conversationId: string;
+    expectedVersion: number;
+    action: ConversationWorkflowAction;
+    actor: { userId: string; email: string };
+    updatedAt: string;
+  }): Promise<ConversationWorkflowResult> {
+    const current = await this.d1
+      .prepare(
+        `SELECT c.version, c.status, c.assigned_to, c.lead_id, l.status AS lead_status
+           FROM inbox_conversation c
+           LEFT JOIN lead l ON l.id = c.lead_id
+          WHERE c.id = ?`,
+      )
+      .bind(input.conversationId)
+      .first<{
+        version: number;
+        status: string;
+        assigned_to: string | null;
+        lead_id: string | null;
+        lead_status: string | null;
+      }>();
+    if (!current) return { ok: false, reason: "not_found" };
+    if (Number(current.version) !== input.expectedVersion) return { ok: false, reason: "conflict" };
+    if (String(current.status) === "CLOSED") return { ok: false, reason: "closed" };
+    if (input.action.type === "MARK_LOST" && current.lead_id === null) {
+      return { ok: false, reason: "lead_required" };
+    }
+    if (input.action.type === "MARK_LOST" && current.lead_status === "WON") {
+      return { ok: false, reason: "won" };
+    }
+
+    const nextVersion = input.expectedVersion + 1;
+    const resolvedAssignedTo = current.assigned_to ?? input.actor.email;
+    const auditId = crypto.randomUUID();
+    let update: D1PreparedStatement;
+    let eventType: string;
+    let eventMetadata: Record<string, unknown>;
+    let auditMetadata: Record<string, unknown>;
+    if (input.action.type === "ASSIGN") {
+      update = this.d1
+        .prepare(
+          `UPDATE inbox_conversation
+              SET assigned_to = ?, version = ?, updated_at = ?
+            WHERE id = ? AND version = ? AND status != 'CLOSED'`,
+        )
+        .bind(input.action.assignedTo, nextVersion, input.updatedAt, input.conversationId, input.expectedVersion);
+      eventType = "INBOX_ASSIGNED";
+      eventMetadata = { selfAssigned: input.action.assignedTo === input.actor.email };
+      auditMetadata = eventMetadata;
+    } else if (input.action.type === "SCHEDULE_FOLLOW_UP") {
+      update = this.d1
+        .prepare(
+          `UPDATE inbox_conversation
+              SET assigned_to = COALESCE(assigned_to, ?), follow_up_at = ?, follow_up_note = ?,
+                  version = ?, updated_at = ?
+            WHERE id = ? AND version = ? AND status != 'CLOSED'`,
+        )
+        .bind(
+          input.action.assignedTo,
+          input.action.followUpAt,
+          input.action.note,
+          nextVersion,
+          input.updatedAt,
+          input.conversationId,
+          input.expectedVersion,
+        );
+      eventType = "FOLLOW_UP_SCHEDULED";
+      eventMetadata = { dueAt: input.action.followUpAt, hasNote: input.action.note !== null };
+      auditMetadata = eventMetadata;
+    } else if (input.action.type === "CLEAR_FOLLOW_UP") {
+      update = this.d1
+        .prepare(
+          `UPDATE inbox_conversation
+              SET follow_up_at = NULL, follow_up_note = NULL, version = ?, updated_at = ?
+            WHERE id = ? AND version = ? AND status != 'CLOSED'`,
+        )
+        .bind(nextVersion, input.updatedAt, input.conversationId, input.expectedVersion);
+      eventType = "FOLLOW_UP_CLEARED";
+      eventMetadata = {};
+      auditMetadata = {};
+    } else {
+      update = this.d1
+        .prepare(
+          `UPDATE inbox_conversation
+              SET status = 'CLOSED', follow_up_at = NULL, follow_up_note = NULL,
+                  version = ?, updated_at = ?
+            WHERE id = ? AND version = ? AND status != 'CLOSED'
+              AND EXISTS (
+                SELECT 1 FROM lead
+                 WHERE lead.id = inbox_conversation.lead_id AND lead.status != 'WON'
+              )`,
+        )
+        .bind(nextVersion, input.updatedAt, input.conversationId, input.expectedVersion);
+      eventType = "STATUS_CHANGED";
+      eventMetadata = { to: "LOST", lostReason: input.action.reason };
+      auditMetadata = { to: "LOST", hasLostReason: true };
+    }
+
+    const audit = this.d1
+      .prepare(
+        `INSERT INTO admin_audit_log
+           (id, actor_user_id, actor_email, action, resource_type, resource_id,
+            previous_version, next_version, summary_json, occurred_at)
+         SELECT ?, ?, ?, ?, 'inbox_conversation', ?, ?, ?, ?, ?
+          WHERE changes() > 0`,
+      )
+      .bind(
+        auditId,
+        input.actor.userId,
+        input.actor.email,
+        eventType,
+        input.conversationId,
+        input.expectedVersion,
+        nextVersion,
+        JSON.stringify(auditMetadata),
+        input.updatedAt,
+      );
+
+    const statements: D1PreparedStatement[] = [update, audit];
+    if (input.action.type === "ASSIGN" || input.action.type === "SCHEDULE_FOLLOW_UP") {
+      const assignedTo = input.action.type === "ASSIGN" ? input.action.assignedTo : resolvedAssignedTo;
+      statements.push(
+        this.d1
+          .prepare(
+            `UPDATE lead
+                SET assigned_to = ?, version = version + 1, updated_at = ?
+              WHERE id = (SELECT lead_id FROM inbox_conversation WHERE id = ? AND version = ?)
+                AND EXISTS (SELECT 1 FROM admin_audit_log WHERE id = ?)`,
+          )
+          .bind(assignedTo, input.updatedAt, input.conversationId, nextVersion, auditId),
+      );
+    } else if (input.action.type === "MARK_LOST") {
+      statements.push(
+        this.d1
+          .prepare(
+            `UPDATE lead
+                SET status = 'LOST', lost_reason = ?, version = version + 1, updated_at = ?
+              WHERE id = (SELECT lead_id FROM inbox_conversation WHERE id = ? AND version = ?)
+                AND status != 'WON'
+                AND EXISTS (SELECT 1 FROM admin_audit_log WHERE id = ?)`,
+          )
+          .bind(input.action.reason, input.updatedAt, input.conversationId, nextVersion, auditId),
+      );
+    }
+    statements.push(
+      this.d1
+        .prepare(
+          `INSERT INTO lead_event
+             (id, lead_id, type, actor_type, actor_id, metadata_json, occurred_at)
+           SELECT ?, lead_id, ?, 'USER', ?, ?, ?
+             FROM inbox_conversation
+            WHERE id = ? AND version = ? AND lead_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM admin_audit_log WHERE id = ?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          eventType,
+          input.actor.userId,
+          JSON.stringify(eventMetadata),
+          input.updatedAt,
+          input.conversationId,
+          nextVersion,
+          auditId,
+        ),
+    );
+    const [result] = await this.d1.batch(statements);
+    return Number(result.meta?.changes ?? 0) > 0
+      ? { ok: true, nextVersion }
+      : { ok: false, reason: "conflict" };
   }
 
   /**
@@ -749,6 +950,7 @@ export type ChannelInboxRepositoryLike = Pick<
   | "findConversationForOutbound"
   | "recordOutboundMessage"
   | "setHandling"
+  | "updateConversationWorkflow"
   | "recordConversationEvent"
   | "listRecentMessages"
   | "listConversationQueue"

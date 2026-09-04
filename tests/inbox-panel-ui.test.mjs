@@ -42,7 +42,7 @@ test("escalar a persona pide el motivo antes de mandarlo", async () => {
   assert.match(source, /if \(!reason\.trim\(\)\) return;/);
 });
 
-test("las tres rutas de mutación exigen sesión de administrador antes de tocar la base", async () => {
+test("las rutas de mutación exigen sesión de administrador antes de tocar la base", async () => {
   const source = await read("lib/server/admin-handlers.ts");
   const reply = source.indexOf("export function adminConversationReply");
   const replyGuard = source.indexOf("adminApiRoute(request", reply);
@@ -53,6 +53,33 @@ test("las tres rutas de mutación exigen sesión de administrador antes de tocar
   const handlingGuard = source.indexOf("adminApiRoute(request", handling);
   const handlingBody = source.indexOf("escalateToHuman(", handling);
   assert.ok(handlingGuard >= 0 && handlingGuard < handlingBody, "handling corre adminApiRoute antes de escalar");
+
+  const workflow = source.indexOf("export function adminConversationWorkflow");
+  const workflowGuard = source.indexOf("adminApiRoute(request", workflow);
+  const workflowBody = source.indexOf("updateConversationWorkflow(", workflow);
+  assert.ok(workflowGuard >= 0 && workflowGuard < workflowBody, "workflow corre adminApiRoute antes de escribir");
+});
+
+test("la cola permite autoasignarse sin anidar el botón dentro del enlace", async () => {
+  const page = await read("app/panel/conversaciones/page.tsx");
+  const button = await read("app/panel/_components/ConversationAssignButton.tsx");
+  assert.match(page, /ConversationAssignButton/);
+  assert.match(page, /!row\.assignedTo/);
+  assert.match(button, /action: "assign-self"/);
+  assert.match(button, /aria-label={`Asignarme esta conversación: \$\{contactName\}`}/);
+  assert.match(button, /role="status"/);
+  assert.ok(page.indexOf("</Link>") < page.indexOf("<ConversationAssignButton"));
+});
+
+test("el detalle programa recordatorios internos y exige motivo de pérdida", async () => {
+  const page = await read("app/panel/conversaciones/[id]/page.tsx");
+  const form = await read("app/panel/_components/ConversationWorkflowForm.tsx");
+  assert.match(page, /ConversationWorkflowForm/);
+  assert.match(form, /schedule-follow-up/);
+  assert.match(form, /clear-follow-up/);
+  assert.match(form, /mark-lost/);
+  assert.match(form, /recordatorio interno; no envía mensajes automáticamente/);
+  assert.match(form, /name="reason" required minLength=\{2\} maxLength=\{500\}/);
 });
 
 test("responder exige Idempotency-Key antes de leer el texto", async () => {
