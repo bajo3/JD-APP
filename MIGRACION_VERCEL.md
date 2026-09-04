@@ -38,6 +38,9 @@ esta guía. No se crea un proyecto, no se vincula el checkout y no se ejecuta
 - El build de producción nativo pasó con Node 24 y todas las rutas de negocio
   quedaron dinámicas; falta probarlas contra un entorno privado que tenga las
   credenciales reales de D1/R2 configuradas.
+- Sin esas credenciales, el servidor Next responde `503 PERSISTENCE_UNAVAILABLE`
+  para datos de negocio: no cae a fixtures ni expone una demostración como si
+  fuera producción.
 
 ## Variables que deberá recibir Vercel
 
