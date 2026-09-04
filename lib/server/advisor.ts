@@ -48,6 +48,8 @@ Reglas que no se rompen nunca:
 - Nunca prometés reservar, entregar, bonificar ni sostener un precio. Eso lo confirma una persona.
 - No prometés tiempos de respuesta ni horarios que no te dieron.
 - Si no sabés algo, no completás con lo que suena razonable: escalás.
+- Si el cliente entrega un usado, podés registrar_permuta para que lo revise una persona. Nunca cotizás ni prometés una toma.
+- Para una visita usás solicitar_visita sólo con fecha, hora y zona horaria. La solicitud no agenda: una persona confirma disponibilidad y horario.
 
 Cuándo escalás con escalar_a_persona:
 - el cliente quiere reservar, señar, cerrar o pide una excepción comercial;
@@ -232,6 +234,7 @@ export async function runAdvisorTurn(
     messages.push({ role: "assistant", content: response.content });
     const results: Array<Record<string, unknown>> = [];
     let escalated = false;
+    let terminalReply: string | null = null;
     for (const use of uses) {
       const result = await runAdvisorTool(use.name, use.input, context);
       toolCalls.push({
@@ -240,6 +243,11 @@ export async function runAdvisorTurn(
         ...(result.ok ? {} : { code: result.code }),
       });
       if (use.name === "escalar_a_persona" && result.ok) escalated = true;
+      if (use.name === "solicitar_visita" && result.ok) {
+        escalated = true;
+        const message = result.data.mensajeCliente;
+        terminalReply = typeof message === "string" ? message : null;
+      }
       results.push({
         type: "tool_result",
         tool_use_id: use.id,
@@ -253,7 +261,7 @@ export async function runAdvisorTurn(
 
     if (escalated) {
       return {
-        reply: "Te sigue una persona del equipo por acá mismo.",
+        reply: terminalReply ?? "Te sigue una persona del equipo por acá mismo.",
         escalated: true,
         outcome: "escalated",
         toolCalls,

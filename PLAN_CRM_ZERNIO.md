@@ -212,10 +212,10 @@ no borre un contacto previo, y grupos explícitos para los datos ausentes. La UI
 declara las reglas de atribución y conserva a la vista las métricas todavía no
 medidas.
 
-### F3 — Asesor con herramientas — **capa de herramientas implementada**
+### F3 — Asesor con herramientas — **implementado y validado localmente**
 
 `lib/server/advisor-tools.ts` es el único punto por el que el asesor toca el
-negocio. Tres herramientas, con `strict: true` y `additionalProperties: false`
+negocio. Siete herramientas, con `strict: true` y `additionalProperties: false`
 para que el modelo no pueda pasar un campo inventado, cubiertas por
 `tests/advisor-tools.test.mjs`:
 
@@ -234,6 +234,19 @@ para que el modelo no pueda pasar un campo inventado, cubiertas por
   snapshot que después abre el vendedor.
 - `escalar_a_persona` — pasa la conversación a atención humana por el circuito
   de salida, con el motivo asentado, y le prohíbe al asesor prometer plazos.
+- `registrar_demanda` — abre un pasaporte `DRAFT` y entrega una capacidad de
+  256 bits por el enlace `/mi-busqueda/:token`; D1 guarda sólo su SHA-256. La
+  identidad del pasaporte se deriva del mensaje entrante, por lo que un replay
+  no crea un segundo borrador.
+- `confirmar_demanda` — conserva el fallback conversacional para un cliente que
+  no pueda abrir el enlace, pero sólo puede confirmar el borrador que el asesor
+  acaba de proponer.
+- `registrar_permuta` — toma la declaración inicial como tasación `T0`, deja el
+  evento `TRADE_IN_SUBMITTED` y nunca devuelve un importe: el valor requiere
+  revisión física y documental.
+- `solicitar_visita` — acepta sólo fecha y hora futuras con zona, y una unidad
+  de la última búsqueda. Registra `REQUESTED`, pasa el hilo a `HUMAN` y termina
+  el turno: nadie confirma el horario o la disponibilidad sin una persona.
 
 `cuotaMaxima` es obligatoria porque el motor no evalúa sin ella: la herramienta
 obliga al asesor a preguntarla antes de buscar en lugar de suponerla.
@@ -266,8 +279,15 @@ queda marcada para una persona en lugar de quedar muda. La clave de idempotencia
 del envío se deriva del mensaje entrante, y un reintento del evento ni llega al
 modelo.
 
-Falta de F3: el pasaporte del comprador persistido y mostrado al cliente para
-que lo corrija, y las herramientas de permuta y visita.
+El enlace público de revisión es `noindex`: muestra exclusivamente los criterios
+comerciales del pasaporte, nunca el lead ni datos de contacto. El cliente puede
+corregirlos y confirmar con control de versión; el CAS crea exactamente un
+evento `DEMAND_CONFIRMED_BY_CUSTOMER` y una demanda abierta. Un token inválido
+responde como inexistente, cada ruta limita abuso en D1 y el token no vuelve a
+salir de la base. Todo el recorrido —borrador, corrección, conflicto, replay,
+permuta y solicitud de visita— está cubierto sobre SQLite con las migraciones
+reales por `tests/demand-repository.test.mjs`,
+`tests/advisor-demand-tools.test.mjs` y `tests/advisor-turn.test.mjs`.
 
 **Deuda conocida:** el turno del asesor corre dentro del webhook, así que en una
 conversación en modo asesor el acuse a Zernio espera al modelo. Mientras el

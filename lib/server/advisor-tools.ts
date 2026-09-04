@@ -1,10 +1,12 @@
 import { searchAffordability } from "@/lib/application/index.mjs";
 import { applicationDependencies, rethrowApplicationError } from "./affordability";
 import { getDataAccess, type DataAccess } from "./data-access";
-import { ApiError } from "./api";
+import { ApiError, publicCode, stableToken } from "./api";
 import { D1ChannelInboxRepository } from "@/lib/data/channel-inbox-repository";
 import { D1DemandRepository, type DemandRepositoryLike } from "@/lib/data/demand-repository";
+import { D1VisitRequestRepository, type VisitRequestRepositoryLike } from "@/lib/data/visit-request-repository";
 import { normalizeDemandCriteria } from "@/lib/domain/demand-matching.mjs";
+import { generateSessionToken, hashSessionToken } from "@/lib/auth/index.mjs";
 import { escalateToHuman, type OutboundRuntime } from "./inbox-outbound";
 import { createSimulationResponse } from "./simulation-api";
 
@@ -47,6 +49,7 @@ export type AdvisorToolContext = Readonly<{
   now?: Date;
   outboundRuntime?: OutboundRuntime;
   demandRepository?: DemandRepositoryLike;
+  visitRepository?: VisitRequestRepositoryLike;
   idempotencyKey?: string;
 }>;
 
@@ -169,6 +172,47 @@ export const ADVISOR_TOOLS = Object.freeze([
     },
   },
   {
+    name: "registrar_permuta",
+    description:
+      "Registra los datos declarados del usado para revisión humana. No cotiza, no devuelve rangos " +
+      "ni promete toma: una persona revisa físicamente y la documentación antes de decidir.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["marca", "modelo", "anio", "kilometraje", "estadoDeclarado"],
+      properties: {
+        marca: { type: "string" },
+        modelo: { type: "string" },
+        version: { type: ["string", "null"] },
+        anio: { type: "integer" },
+        kilometraje: { type: "integer" },
+        estadoDeclarado: { type: "string", description: "EXCELLENT, GOOD, FAIR o NEEDS_REPAIR." },
+        estadoDocumentacion: { type: ["string", "null"] },
+        tienePrenda: { type: "boolean" },
+        observaciones: { type: ["string", "null"] },
+      },
+    },
+  },
+  {
+    name: "solicitar_visita",
+    description:
+      "Registra una solicitud de visita para que una persona confirme disponibilidad y horario. " +
+      "No agenda ni reserva: pedí una fecha y hora ISO 8601 con zona horaria. Si menciona una unidad, " +
+      "usá sólo un vehicleId que haya devuelto buscar_vehiculos.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["fechaHoraSolicitada"],
+      properties: {
+        fechaHoraSolicitada: { type: "string", description: "ISO 8601 con zona horaria." },
+        vehicleId: { type: ["string", "null"] },
+        nota: { type: ["string", "null"] },
+      },
+    },
+  },
+  {
     name: "escalar_a_persona",
     description:
       "Pasa la conversación a un vendedor con el hilo completo. Usalo cuando el cliente quiera reservar, " +
@@ -245,6 +289,46 @@ function stringList(input: Record<string, unknown>, key: string): string[] {
   const raw = input[key];
   if (!Array.isArray(raw)) return [];
   return raw.filter((item): item is string => typeof item === "string").slice(0, 10);
+}
+
+function optionalText(input: Record<string, unknown>, key: string, max: number): string | null {
+  const raw = input[key];
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string") throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.");
+  const normalized = raw.trim();
+  if (!normalized || normalized.length > max) {
+    throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.");
+  }
+  return normalized;
+}
+
+function requiredText(input: Record<string, unknown>, key: string, min: number, max: number): string {
+  const value = optionalText(input, key, max);
+  if (!value || value.length < min) throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.");
+  return value;
+}
+
+function requiredIntegerValue(
+  input: Record<string, unknown>,
+  key: string,
+  min: number,
+  max: number,
+): number {
+  const value = input[key];
+  if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) {
+    throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.");
+  }
+  return value as number;
+}
+
+async function advisorStableId(prefix: string, seed: unknown): Promise<string> {
+  return `${prefix}-${await stableToken(JSON.stringify(seed), 32)}`;
+}
+
+function reviewUrl(token: string): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "");
+  const path = `/mi-busqueda/${token}`;
+  return configured && /^https:\/\//i.test(configured) ? `${configured}${path}` : path;
 }
 
 function failure(error: unknown): AdvisorToolResult {
@@ -502,11 +586,20 @@ async function registrarDemanda(
   }
 
   const repository = context.demandRepository ?? new D1DemandRepository();
-  const passportId = crypto.randomUUID();
+  // El mismo evento entrante vuelve a ejecutar el turno en algunos reintentos.
+  // El pasaporte conserva una identidad estable para que INSERT OR IGNORE no
+  // deje otro borrador; el mensaje saliente usa la misma idempotency key.
+  const passportId = await advisorStableId("advisor-passport", {
+    inbound: context.idempotencyKey ?? null,
+    conversationId: conversation.id,
+  });
+  const reviewToken = generateSessionToken();
+  const reviewTokenHash = await hashSessionToken(reviewToken);
   await repository.createPassport({
     id: passportId,
     leadId: conversation.leadId,
     conversationId: conversation.id,
+    reviewTokenHash,
     budgetCents: criteria.maxPriceCents,
     downPaymentCents: null,
     maxMonthlyPaymentCents: null,
@@ -543,10 +636,140 @@ async function registrarDemanda(
     data: {
       passportId,
       resumen,
+      enlaceRevision: reviewUrl(reviewToken),
       // El dato es del cliente: lo corrige antes de que se busque a su nombre.
       instruccion:
-        "Leele el resumen tal cual y preguntale si está bien o si hay algo para corregir. " +
-        "Recién cuando confirme, llamá a confirmar_demanda.",
+        "Mandale el enlace de revisión: allí puede corregir y confirmar la búsqueda. " +
+        "No queda registrada hasta esa confirmación. Si no puede abrirlo, leele el resumen y usá confirmar_demanda sólo cuando lo apruebe.",
+    },
+  };
+}
+
+async function registrarPermuta(
+  input: Record<string, unknown>,
+  context: AdvisorToolContext,
+): Promise<AdvisorToolResult> {
+  const now = context.now ?? new Date();
+  const inbox = context.outboundRuntime?.repository ?? new D1ChannelInboxRepository();
+  const conversation = await inbox.findConversationForOutbound(context.conversationId);
+  if (!conversation?.leadId) {
+    return { ok: false, code: "LEAD_REQUIRED", message: "Falta el contacto para registrar la permuta." };
+  }
+
+  const declaredCondition = requiredText(input, "estadoDeclarado", 1, 40).toUpperCase();
+  if (!new Set(["EXCELLENT", "GOOD", "FAIR", "NEEDS_REPAIR"]).has(declaredCondition)) {
+    return { ok: false, code: "INVALID_TRADE_IN", message: "El estado declarado no es válido." };
+  }
+  const command = {
+    leadId: conversation.leadId,
+    make: requiredText(input, "marca", 2, 60),
+    model: requiredText(input, "modelo", 1, 80),
+    trim: optionalText(input, "version", 80),
+    year: requiredIntegerValue(input, "anio", 1950, now.getUTCFullYear() + 1),
+    mileageKm: requiredIntegerValue(input, "kilometraje", 0, 3_000_000),
+    declaredCondition,
+    documentationStatus: optionalText(input, "estadoDocumentacion", 60),
+    hasLien: input.tienePrenda === true,
+    repairNotes: optionalText(input, "observaciones", 2_000),
+  };
+  const key = await advisorStableId("advisor-appraisal", { inbound: context.idempotencyKey ?? null, command });
+  const access = context.access ?? getDataAccess();
+  const id = crypto.randomUUID();
+  const appraisal = await access.appraisals.create({
+    id,
+    publicCode: publicCode("TAS"),
+    idempotencyKey: key,
+    leadId: command.leadId,
+    make: command.make,
+    model: command.model,
+    trim: command.trim,
+    year: command.year,
+    mileageKm: command.mileageKm,
+    declaredCondition: command.declaredCondition,
+    documentationStatus: command.documentationStatus,
+    hasLien: command.hasLien,
+    repairNotes: command.repairNotes,
+    status: "SUBMITTED",
+    certaintyLevel: "T0",
+  });
+  await inbox.recordConversationEvent({
+    id: await advisorStableId("advisor-appraisal-event", { key }),
+    conversationId: conversation.id,
+    type: "TRADE_IN_SUBMITTED",
+    actorType: "AI",
+    actorId: "asesor",
+    metadataJson: JSON.stringify({ appraisalCode: appraisal.publicCode, certainty: "T0" }),
+    occurredAt: now.toISOString(),
+  });
+  return {
+    ok: true,
+    data: {
+      codigo: appraisal.publicCode,
+      estado: "SUBMITTED",
+      certeza: "T0",
+      requiereRevision: true,
+      mensajeCliente:
+        "Tomé los datos de tu usado para que una persona del equipo lo revise. La tasación queda pendiente de revisión física y documental; no puedo confirmar un valor ni la toma todavía.",
+    },
+  };
+}
+
+async function solicitarVisita(
+  input: Record<string, unknown>,
+  context: AdvisorToolContext,
+): Promise<AdvisorToolResult> {
+  const rawRequestedAt = requiredText(input, "fechaHoraSolicitada", 20, 50);
+  if (!/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(rawRequestedAt)) {
+    return { ok: false, code: "INVALID_VISIT_TIME", message: "Pedí fecha, hora y zona horaria para la visita." };
+  }
+  const requestedMs = Date.parse(rawRequestedAt);
+  const now = context.now ?? new Date();
+  if (!Number.isFinite(requestedMs) || requestedMs <= now.getTime() || requestedMs > now.getTime() + 60 * 86_400_000) {
+    return { ok: false, code: "INVALID_VISIT_TIME", message: "La visita debe ser futura y dentro de los próximos 60 días." };
+  }
+  const rawVehicleId = optionalText(input, "vehicleId", 100);
+  if (rawVehicleId && !context.session.lastSearch?.options.has(rawVehicleId)) {
+    return {
+      ok: false,
+      code: "SELECTION_NOT_FROM_SEARCH",
+      message: "Esa unidad no salió de la búsqueda actual. Buscá antes de pedir la visita.",
+    };
+  }
+  const inbox = context.outboundRuntime?.repository ?? new D1ChannelInboxRepository();
+  const conversation = await inbox.findConversationForOutbound(context.conversationId);
+  if (!conversation?.leadId) {
+    return { ok: false, code: "LEAD_REQUIRED", message: "Falta el contacto para pedir la visita." };
+  }
+  const requestedAt = new Date(requestedMs).toISOString();
+  const note = optionalText(input, "nota", 500);
+  const id = await advisorStableId("visit", {
+    inbound: context.idempotencyKey ?? null,
+    conversationId: conversation.id,
+    requestedAt,
+    vehicleId: rawVehicleId,
+    note,
+  });
+  const created = await (context.visitRepository ?? new D1VisitRequestRepository()).createRequest({
+    id,
+    eventId: await advisorStableId("visit-event", { id }),
+    conversationId: conversation.id,
+    leadId: conversation.leadId,
+    vehicleId: rawVehicleId,
+    requestedAt,
+    assignedTo: conversation.assignedTo,
+    note,
+    createdAt: now.toISOString(),
+  });
+  if (!created) {
+    return { ok: false, code: "VISIT_NOT_CREATED", message: "No se pudo registrar la solicitud de visita." };
+  }
+  return {
+    ok: true,
+    data: {
+      solicitudRegistrada: true,
+      requiereConfirmacionHumana: true,
+      mensajeCliente:
+        "Dejé registrada tu solicitud. Una persona del equipo tiene que confirmar la disponibilidad y el horario antes de darte el turno por confirmado.",
     },
   };
 }
@@ -647,6 +870,8 @@ export async function runAdvisorTool(
     if (name === "simular_operacion") return await simularOperacion(args, context);
     if (name === "registrar_demanda") return await registrarDemanda(args, context);
     if (name === "confirmar_demanda") return await confirmarDemanda(args, context);
+    if (name === "registrar_permuta") return await registrarPermuta(args, context);
+    if (name === "solicitar_visita") return await solicitarVisita(args, context);
     if (name === "escalar_a_persona") return await escalar(args, context);
     return {
       ok: false,

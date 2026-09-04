@@ -846,6 +846,8 @@ export const buyerPassports = sqliteTable(
     conversationId: text("conversation_id").references(() => inboxConversations.id, {
       onDelete: "set null",
     }),
+    /** Capability secreta: sólo se persiste su SHA-256. */
+    reviewTokenHash: text("review_token_hash"),
     status: text("status").notNull().default("DRAFT"),
     budgetCents: integer("budget_cents"),
     downPaymentCents: integer("down_payment_cents"),
@@ -875,7 +877,33 @@ export const buyerPassports = sqliteTable(
   },
   (table) => [
     index("idx_buyer_passport_lead").on(table.leadId),
+    uniqueIndex("uq_buyer_passport_review_token").on(table.reviewTokenHash),
     index("idx_buyer_passport_status_updated").on(table.status, table.updatedAt),
+  ],
+);
+
+export const visitRequests = sqliteTable(
+  "visit_request",
+  {
+    id: text("id").primaryKey(),
+    leadId: text("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").references(() => inboxConversations.id, {
+      onDelete: "set null",
+    }),
+    vehicleId: text("vehicle_id").references(() => vehicles.id, { onDelete: "set null" }),
+    requestedAt: text("requested_at").notNull(),
+    status: text("status").notNull().default("REQUESTED"),
+    assignedTo: text("assigned_to"),
+    note: text("note"),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("idx_visit_request_status_requested").on(table.status, table.requestedAt),
+    index("idx_visit_request_lead").on(table.leadId),
   ],
 );
 

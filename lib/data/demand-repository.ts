@@ -20,6 +20,22 @@ export type MatchRecord = Readonly<{
   notifiedTo: string | null;
 }>;
 
+export type PassportReviewRecord = Readonly<{
+  id: string;
+  status: string;
+  version: number;
+  budgetCents: number | null;
+  currency: string;
+  desiredMakes: readonly string[];
+  desiredModels: readonly string[];
+  acceptedTypes: readonly string[];
+  minYear: number | null;
+  maxMileageKm: number | null;
+  tradeInDescription: string | null;
+  urgencyDays: number | null;
+  locality: string | null;
+}>;
+
 export type MatchStatus =
   | "NOTIFIED"
   | "RESPONDED"
@@ -34,6 +50,15 @@ const STATUS_COLUMN: Readonly<Record<MatchStatus, string | null>> = {
   PURCHASED: "purchased_at",
   DISCARDED: null,
 };
+
+function jsonStringList(value: unknown): readonly string[] {
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Demandas registradas y sus coincidencias.
@@ -51,6 +76,7 @@ export class D1DemandRepository {
     id: string;
     leadId: string;
     conversationId: string | null;
+    reviewTokenHash?: string | null;
     budgetCents: number | null;
     downPaymentCents: number | null;
     maxMonthlyPaymentCents: number | null;
@@ -72,18 +98,19 @@ export class D1DemandRepository {
   }): Promise<void> {
     await this.d1
       .prepare(
-        `INSERT INTO buyer_passport
-           (id, lead_id, conversation_id, status, budget_cents, down_payment_cents,
+        `INSERT OR IGNORE INTO buyer_passport
+           (id, lead_id, conversation_id, review_token_hash, status, budget_cents, down_payment_cents,
             max_monthly_payment_cents, currency, desired_makes_json, desired_models_json,
             accepted_types_json, min_year, max_mileage_km, primary_use, needs_financing,
             trade_in_description, urgency_days, locality, max_distance_km,
             mandatory_conditions_json, negotiable_conditions_json, created_at, updated_at)
-         VALUES (?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         input.id,
         input.leadId,
         input.conversationId,
+        input.reviewTokenHash ?? null,
         input.budgetCents,
         input.downPaymentCents,
         input.maxMonthlyPaymentCents,
@@ -105,6 +132,134 @@ export class D1DemandRepository {
         input.createdAt,
       )
       .run();
+  }
+
+  async findPassportByReviewTokenHash(tokenHash: string): Promise<PassportReviewRecord | null> {
+    const row = await this.d1
+      .prepare(
+        `SELECT id, status, version, budget_cents, currency, desired_makes_json,
+                desired_models_json, accepted_types_json, min_year, max_mileage_km,
+                trade_in_description, urgency_days, locality
+           FROM buyer_passport
+          WHERE review_token_hash = ?
+          LIMIT 1`,
+      )
+      .bind(tokenHash)
+      .first<Record<string, unknown>>();
+    if (!row) return null;
+    return {
+      id: String(row.id),
+      status: String(row.status),
+      version: Number(row.version),
+      budgetCents: row.budget_cents === null ? null : Number(row.budget_cents),
+      currency: String(row.currency),
+      desiredMakes: jsonStringList(row.desired_makes_json),
+      desiredModels: jsonStringList(row.desired_models_json),
+      acceptedTypes: jsonStringList(row.accepted_types_json),
+      minYear: row.min_year === null ? null : Number(row.min_year),
+      maxMileageKm: row.max_mileage_km === null ? null : Number(row.max_mileage_km),
+      tradeInDescription: row.trade_in_description === null ? null : String(row.trade_in_description),
+      urgencyDays: row.urgency_days === null ? null : Number(row.urgency_days),
+      locality: row.locality === null ? null : String(row.locality),
+    };
+  }
+
+  async confirmPassportReview(input: {
+    tokenHash: string;
+    expectedVersion: number;
+    budgetCents: number;
+    currency: string;
+    desiredMakes: readonly string[];
+    desiredModels: readonly string[];
+    acceptedTypes: readonly string[];
+    minYear: number | null;
+    maxMileageKm: number | null;
+    tradeInDescription: string | null;
+    urgencyDays: number | null;
+    locality: string | null;
+    demandId: string;
+    demandPublicCode: string;
+    criteria: unknown;
+    validUntil: string;
+    eventId: string;
+    confirmedAt: string;
+  }): Promise<"confirmed" | "not_found" | "conflict" | "already_confirmed"> {
+    const nextVersion = input.expectedVersion + 1;
+    const update = this.d1
+      .prepare(
+        `UPDATE buyer_passport
+            SET status = 'CONFIRMED', budget_cents = ?, currency = ?,
+                desired_makes_json = ?, desired_models_json = ?, accepted_types_json = ?,
+                min_year = ?, max_mileage_km = ?, trade_in_description = ?, urgency_days = ?,
+                locality = ?, confirmed_at = ?, updated_at = ?, version = ?
+          WHERE review_token_hash = ? AND status = 'DRAFT' AND version = ?`,
+      )
+      .bind(
+        input.budgetCents,
+        input.currency,
+        JSON.stringify([...input.desiredMakes]),
+        JSON.stringify([...input.desiredModels]),
+        JSON.stringify([...input.acceptedTypes]),
+        input.minYear,
+        input.maxMileageKm,
+        input.tradeInDescription,
+        input.urgencyDays,
+        input.locality,
+        input.confirmedAt,
+        input.confirmedAt,
+        nextVersion,
+        input.tokenHash,
+        input.expectedVersion,
+      );
+    const event = this.d1
+      .prepare(
+        `INSERT INTO lead_event (id, lead_id, type, actor_type, metadata_json, occurred_at)
+         SELECT ?, lead_id, 'DEMAND_CONFIRMED_BY_CUSTOMER', 'CUSTOMER', ?, ?
+           FROM buyer_passport
+          WHERE changes() > 0
+            AND review_token_hash = ? AND status = 'CONFIRMED' AND version = ?`,
+      )
+      .bind(
+        input.eventId,
+        JSON.stringify({ demandCode: input.demandPublicCode }),
+        input.confirmedAt,
+        input.tokenHash,
+        nextVersion,
+      );
+    // `changes()` refiere al UPDATE anterior del mismo batch. Así, si otro
+    // request ganó el CAS, tampoco queda un evento ni una demanda de rebote.
+    const demand = this.d1
+      .prepare(
+        `INSERT INTO demand
+           (id, public_code, passport_id, lead_id, status, criteria_json, valid_until,
+            assigned_to, created_at, updated_at)
+         SELECT ?, ?, p.id, p.lead_id, 'OPEN', ?, ?,
+                (SELECT assigned_to FROM lead WHERE lead.id = p.lead_id), ?, ?
+           FROM buyer_passport p
+          WHERE p.review_token_hash = ? AND p.status = 'CONFIRMED' AND p.version = ?
+            AND EXISTS (SELECT 1 FROM lead_event WHERE id = ?)
+            AND NOT EXISTS (SELECT 1 FROM demand WHERE passport_id = p.id)`,
+      )
+      .bind(
+        input.demandId,
+        input.demandPublicCode,
+        JSON.stringify(input.criteria),
+        input.validUntil,
+        input.confirmedAt,
+        input.confirmedAt,
+        input.tokenHash,
+        nextVersion,
+        input.eventId,
+      );
+    const [result] = await this.d1.batch([update, event, demand]);
+    if (Number(result.meta?.changes ?? 0) > 0) return "confirmed";
+    const current = await this.d1
+      .prepare("SELECT status, version FROM buyer_passport WHERE review_token_hash = ?")
+      .bind(input.tokenHash)
+      .first<{ status: string; version: number }>();
+    if (!current) return "not_found";
+    if (String(current.status) === "CONFIRMED") return "already_confirmed";
+    return "conflict";
   }
 
   /**
@@ -278,6 +433,8 @@ export class D1DemandRepository {
 export type DemandRepositoryLike = Pick<
   D1DemandRepository,
   | "createPassport"
+  | "findPassportByReviewTokenHash"
+  | "confirmPassportReview"
   | "confirmPassport"
   | "createDemand"
   | "listOpenDemands"

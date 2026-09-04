@@ -85,7 +85,11 @@ export async function replyIfAdvisorHandles(
       {
         ...runtime.advisor,
         ...(runtime.now ? { now } : {}),
-        toolContext: { outboundRuntime, ...runtime.advisor?.toolContext },
+        toolContext: {
+          outboundRuntime,
+          idempotencyKey: `advisor:${input.inboundMessageId}`,
+          ...runtime.advisor?.toolContext,
+        },
       },
     );
   } catch {

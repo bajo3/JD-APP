@@ -216,6 +216,7 @@ test("las rutas públicas de mutación pasan por el limitador", async () => {
     ["app/api/v1/affordability/search/route.ts", "public.search"],
     ["app/api/v1/consignments/route.ts", "public.consignment"],
     ["app/api/v1/consignments/[code]/photos/route.ts", "public.consignment-photo"],
+    ["app/api/v1/passports/[token]/route.ts", "public.passport-review"],
   ];
   for (const [path, resource] of expectations) {
     const source = readFileSync(path, "utf8");

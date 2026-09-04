@@ -104,6 +104,7 @@ const MIGRATIONS = [
   "0012_mysterious_forge.sql",
   "0013_dizzy_pretty_boy.sql",
   "0014_flat_preak.sql",
+  "0015_keen_thena.sql",
 ];
 
 function uniqueAliasQuery(sql, columns) {

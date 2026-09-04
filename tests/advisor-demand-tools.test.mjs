@@ -52,6 +52,7 @@ registerHooks({
 
 const { createAdvisorSession, runAdvisorTool } = await import("../lib/server/advisor-tools.ts");
 const { D1DemandRepository } = await import("../lib/data/demand-repository.ts");
+const { D1VisitRequestRepository } = await import("../lib/data/visit-request-repository.ts");
 
 const NOW = new Date("2026-09-03T12:00:00.000Z");
 const DAY = 86_400_000;
@@ -93,6 +94,7 @@ function harness({ leadId = "lead-1" } = {}) {
     "drizzle/0000_chemical_tiger_shark.sql",
     "drizzle/0012_mysterious_forge.sql",
     "drizzle/0013_dizzy_pretty_boy.sql",
+    "drizzle/0015_keen_thena.sql",
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
@@ -121,6 +123,7 @@ function harness({ leadId = "lead-1" } = {}) {
     session,
     now: NOW,
     demandRepository,
+    idempotencyKey: "advisor:inbound-1",
     outboundRuntime: {
       repository: {
         async findConversationForOutbound(id) {
@@ -173,14 +176,26 @@ test("registrar deja un borrador y un resumen para leerle al cliente", async () 
   assert.match(result.data.resumen, /desde 2015/);
   assert.match(result.data.resumen, /hasta USD 25\.000/);
   assert.match(result.data.resumen, /entrega un usado/);
-  assert.match(result.data.instruccion, /Leele el resumen/);
+  assert.match(result.data.instruccion, /enlace de revisión/);
+  assert.match(result.data.enlaceRevision, /\/mi-busqueda\//);
 
   const [passport] = rows("SELECT * FROM buyer_passport");
+  assert.equal(passport.review_token_hash.length, 64, "sólo queda el hash del enlace");
   assert.equal(passport.status, "DRAFT");
   assert.equal(passport.lead_id, "lead-1");
   assert.equal(passport.trade_in_description, "Gol 2012");
   assert.equal(rows("SELECT * FROM demand").length, 0, "todavía no hay demanda");
   assert.equal(session.pendingDemand.passportId, passport.id);
+});
+
+test("repetir el mismo evento no duplica el pasaporte", async () => {
+  const { context, rows } = harness();
+  const first = await runAdvisorTool("registrar_demanda", AMAROK, context);
+  const replay = await runAdvisorTool("registrar_demanda", AMAROK, context);
+  assert.equal(first.ok, true);
+  assert.equal(first.data.passportId, replay.data.passportId);
+  assert.equal(rows("SELECT * FROM buyer_passport").length, 1);
+  assert.equal(replay.ok, true);
 });
 
 test("no se puede confirmar una demanda que el cliente nunca escuchó", async () => {
@@ -276,4 +291,41 @@ test("una demanda sin ningún criterio real no se registra", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.code, "INVALID_DEMAND");
   assert.equal(rows("SELECT * FROM buyer_passport").length, 0);
+});
+
+test("la permuta queda como T0 sin cotizar ni prometer una toma", async () => {
+  const { context } = harness();
+  const events = [];
+  context.access = {
+    appraisals: {
+      async create(input) { return { ...input, publicCode: input.publicCode }; },
+    },
+  };
+  context.outboundRuntime.repository.recordConversationEvent = async (input) => events.push(input);
+  const result = await runAdvisorTool("registrar_permuta", {
+    marca: "Volkswagen", modelo: "Gol", anio: 2012, kilometraje: 120000,
+    estadoDeclarado: "GOOD", tienePrenda: false,
+  }, context);
+  assert.equal(result.ok, true);
+  assert.match(result.data.codigo, /^TAS-/);
+  assert.equal(result.data.certeza, "T0");
+  assert.equal(result.data.requiereRevision, true);
+  assert.doesNotMatch(result.data.mensajeCliente, /\$|\d{3,}/);
+  assert.match(result.data.mensajeCliente, /no puedo confirmar un valor/i);
+  assert.equal(events[0].type, "TRADE_IN_SUBMITTED");
+});
+
+test("la visita queda pendiente de confirmación humana y no acepta una unidad ajena", async () => {
+  const { database, context, session, rows } = harness();
+  context.visitRepository = new D1VisitRequestRepository(sqliteD1(database));
+  session.lastSearch = { simulationInput: null, options: new Map([["veh-1", { vehicleId: "veh-1", vehicleSlug: "amarok", selectionVersion: "a".repeat(64) }]]) };
+  const rejected = await runAdvisorTool("solicitar_visita", { fechaHoraSolicitada: "2026-09-05T12:00:00.000Z", vehicleId: "otro" }, context);
+  assert.equal(rejected.code, "SELECTION_NOT_FROM_SEARCH");
+  const result = await runAdvisorTool("solicitar_visita", { fechaHoraSolicitada: "2026-09-05T12:00:00.000Z", vehicleId: null }, context);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.requiereConfirmacionHumana, true);
+  assert.match(result.data.mensajeCliente, /confirmar/i);
+  assert.equal(rows("SELECT * FROM visit_request")[0].status, "REQUESTED");
+  assert.equal(rows("SELECT * FROM inbox_conversation")[0].handling, "HUMAN");
+  assert.equal(rows("SELECT * FROM lead_event WHERE type = 'VISIT_REQUESTED'").length, 1);
 });

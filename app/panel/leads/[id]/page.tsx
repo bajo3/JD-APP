@@ -187,6 +187,9 @@ function eventLabel(type: string): string {
     INBOX_ASSIGNED: "Conversación asignada",
     FOLLOW_UP_SCHEDULED: "Seguimiento programado",
     FOLLOW_UP_CLEARED: "Seguimiento retirado",
+    DEMAND_CONFIRMED_BY_CUSTOMER: "Búsqueda confirmada por cliente",
+    TRADE_IN_SUBMITTED: "Permuta registrada para revisión",
+    VISIT_REQUESTED: "Solicitud de visita registrada",
   };
   return labels[type] ?? type.replaceAll("_", " ").toLocaleLowerCase("es-AR");
 }

@@ -120,7 +120,10 @@ function turn(model, overrides = {}) {
     {
       model,
       now: NOW,
-      toolContext: { outboundRuntime: escalationRuntime(overrides.calls ?? []) },
+      toolContext: {
+        outboundRuntime: escalationRuntime(overrides.calls ?? []),
+        ...(overrides.toolContext ?? {}),
+      },
     },
   );
 }
@@ -137,7 +140,7 @@ test("el asesor contesta con el texto del modelo cuando no necesita herramientas
   assert.equal(seen[0].model, ADVISOR_MODEL);
   assert.equal(seen[0].thinking.type, "adaptive");
   assert.equal(seen[0].system[0].cache_control.type, "ephemeral");
-  assert.equal(seen[0].tools.length, 5);
+  assert.equal(seen[0].tools.length, 7);
 });
 
 test("una respuesta vacía escala en lugar de improvisar", async () => {
@@ -251,6 +254,32 @@ test("cuando el asesor escala, el turno termina ahí y no negocia más", async (
   assert.equal(seen.length, 1, "no se le vuelve a preguntar al modelo");
   assert.doesNotMatch(result.reply, /precio|reserv|seña/i);
   assert.deepEqual(calls, [["handling", "HUMAN"], ["motivo", "quiere señar la unidad"]]);
+});
+
+test("una solicitud de visita queda pendiente y termina el turno del asesor", async () => {
+  const { client, seen } = scriptedModel([
+    {
+      stop_reason: "tool_use",
+      content: [
+        {
+          type: "tool_use",
+          id: "tu-visit",
+          name: "solicitar_visita",
+          input: { fechaHoraSolicitada: "2026-09-05T12:00:00.000Z", vehicleId: null },
+        },
+      ],
+    },
+    { stop_reason: "end_turn", content: [{ type: "text", text: "El turno quedó confirmado" }] },
+  ]);
+  const result = await turn(client, {
+    toolContext: {
+      visitRepository: { async createRequest() { return true; } },
+    },
+  });
+  assert.equal(result.outcome, "escalated");
+  assert.equal(result.escalated, true);
+  assert.equal(seen.length, 1, "no puede confirmar un turno después de solicitarlo");
+  assert.match(result.reply, /persona del equipo.*confirmar/i);
 });
 
 test("el asesor no puede dar vueltas para siempre pidiendo herramientas", async () => {

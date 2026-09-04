@@ -51,6 +51,8 @@ registerHooks({
 });
 
 const { D1DemandRepository } = await import("../lib/data/demand-repository.ts");
+const { confirmPublicPassportReview, findPublicPassportReview } = await import("../lib/server/passport-review.ts");
+const { hashSessionToken } = await import("../lib/auth/index.mjs");
 const { matchVehicleAgainstDemands, buildMatchMessageDraft } = await import(
   "../lib/server/demand-matching-service.ts"
 );
@@ -108,6 +110,7 @@ function harness() {
     "drizzle/0000_chemical_tiger_shark.sql",
     "drizzle/0012_mysterious_forge.sql",
     "drizzle/0013_dizzy_pretty_boy.sql",
+    "drizzle/0015_keen_thena.sql",
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
@@ -182,6 +185,35 @@ test("el pasaporte nace en borrador y la demanda espera la confirmación del cli
     false,
     "confirmar dos veces no vuelve a contar",
   );
+});
+
+test("el enlace público expone sólo el pasaporte y confirma una única demanda con CAS", async () => {
+  const { repository, rows } = harness();
+  const token = "a".repeat(43);
+  await repository.createPassport({
+    id: "pass-review", leadId: "lead-1", conversationId: null,
+    reviewTokenHash: await hashSessionToken(token),
+    budgetCents: 25_000_00, downPaymentCents: null, maxMonthlyPaymentCents: null, currency: "USD",
+    desiredMakes: ["Volkswagen"], desiredModels: ["Amarok"], acceptedTypes: ["pickup"],
+    minYear: 2015, maxMileageKm: 150_000, primaryUse: null, needsFinancing: null,
+    tradeInDescription: "Gol 2012", urgencyDays: 30, locality: "Tandil", maxDistanceKm: null,
+    mandatoryConditions: [], negotiableConditions: [], createdAt: NOW.toISOString(),
+  });
+  const publicView = await findPublicPassportReview(token, repository);
+  assert.equal(publicView.id, "pass-review");
+  assert.equal("leadId" in publicView, false, "el enlace no revela datos del lead");
+  assert.equal(JSON.stringify(publicView).includes(token), false, "el token nunca vuelve al cliente");
+
+  const payload = {
+    expectedVersion: 1, budgetCents: 26_000_00, currency: "USD",
+    desiredMakes: ["Volkswagen"], desiredModels: ["Amarok"], acceptedTypes: ["pickup"],
+    minYear: 2015, maxMileageKm: 140_000, tradeInDescription: "Gol 2012", urgencyDays: 30, locality: "Tandil",
+  };
+  assert.equal(await confirmPublicPassportReview(token, payload, { repository, now: NOW }), "confirmed");
+  assert.equal(await confirmPublicPassportReview(token, payload, { repository, now: NOW }), "already_confirmed");
+  assert.equal(rows("SELECT * FROM demand").length, 1, "el replay no duplica la demanda");
+  assert.equal(rows("SELECT * FROM lead_event WHERE type = 'DEMAND_CONFIRMED_BY_CUSTOMER'").length, 1);
+  assert.equal(rows("SELECT status, version, budget_cents FROM buyer_passport WHERE id = 'pass-review'")[0].status, "CONFIRMED");
 });
 
 test("una demanda vigente aparece; una vencida no", async () => {
