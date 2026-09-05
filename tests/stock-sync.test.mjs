@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -10,6 +13,7 @@ import {
   photoKind,
   planStockSync,
   publicSlug,
+  resolveRuntime,
 } from "../scripts/stock-sync.mjs";
 
 const TAB = String.fromCharCode(9);
@@ -174,4 +178,47 @@ test("las piezas editadas y la caja se clasifican sin adivinar", () => {
   assert.equal(normalizeTransmission("automatica"), "Automática");
   assert.equal(normalizeTransmission("CVT"), "CVT");
   assert.equal(publicSlug("chevrolet_cruze_lt_2019_2"), "chevrolet-cruze-lt-2019-2");
+});
+
+test("resolveRuntime propaga --dry-run, --skip-photos y --photos: escribir de más aquí haría que --dry-run escriba en Supabase igual que --confirm-remote", () => {
+  const jdAutoDir = mkdtempSync(join(tmpdir(), "jda-jd-auto-fixture-"));
+  const previousEnv = {
+    SUPABASE_DB_URL: process.env.SUPABASE_DB_URL,
+    SUPABASE_STORAGE_ENDPOINT: process.env.SUPABASE_STORAGE_ENDPOINT,
+    SUPABASE_STORAGE_REGION: process.env.SUPABASE_STORAGE_REGION,
+    SUPABASE_STORAGE_BUCKET: process.env.SUPABASE_STORAGE_BUCKET,
+    SUPABASE_STORAGE_ACCESS_KEY_ID: process.env.SUPABASE_STORAGE_ACCESS_KEY_ID,
+    SUPABASE_STORAGE_SECRET_ACCESS_KEY: process.env.SUPABASE_STORAGE_SECRET_ACCESS_KEY,
+  };
+  try {
+    writeFileSync(
+      join(jdAutoDir, ".env"),
+      [
+        "SUPABASE_URL=https://fixture.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY=fixture-key",
+        "SHEET_TSV_URL=https://fixture.example/sheet?output=csv",
+      ].join("\n"),
+    );
+    process.env.SUPABASE_DB_URL = "postgresql://fixture:fixture@localhost:5432/fixture";
+    process.env.SUPABASE_STORAGE_ENDPOINT = "https://fixture.storage.supabase.co/storage/v1/s3";
+    process.env.SUPABASE_STORAGE_REGION = "us-west-2";
+    process.env.SUPABASE_STORAGE_BUCKET = "fixture-bucket";
+    process.env.SUPABASE_STORAGE_ACCESS_KEY_ID = "fixture-access-key";
+    process.env.SUPABASE_STORAGE_SECRET_ACCESS_KEY = "fixture-secret-key";
+
+    const runtime = resolveRuntime(
+      { remote: true, confirmRemote: true, dryRun: true, skipPhotos: true, photoLimit: 7, jdAutoDir },
+      "/fixture-project-root",
+    );
+    assert.equal(runtime.dryRun, true);
+    assert.equal(runtime.skipPhotos, true);
+    assert.equal(runtime.photoLimit, 7);
+    assert.equal(runtime.sheetUrl, "https://fixture.example/sheet?output=tsv");
+  } finally {
+    rmSync(jdAutoDir, { recursive: true, force: true });
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });

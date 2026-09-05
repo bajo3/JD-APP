@@ -562,7 +562,7 @@ function requiredEnvironment(name) {
   return value;
 }
 
-function resolveRuntime(options, projectRoot) {
+export function resolveRuntime(options, projectRoot) {
   const dataRuntime = resolveDataRuntime(options);
 
   const jdAutoDir = resolve(options.jdAutoDir ?? join(projectRoot, "..", "JD-Auto"));
@@ -580,6 +580,14 @@ function resolveRuntime(options, projectRoot) {
 
   return {
     ...dataRuntime,
+    // parseArgs() computes estas tres banderas, pero resolveDataRuntime()
+    // sólo conoce remote/confirmRemote: sin copiarlas explícitamente acá,
+    // runtime.dryRun queda undefined y --dry-run deja de tener efecto (bug
+    // real encontrado el 5 de septiembre de 2026: una corrida con
+    // --dry-run escribía en Supabase igual que --confirm-remote).
+    dryRun: options.dryRun,
+    skipPhotos: options.skipPhotos,
+    photoLimit: options.photoLimit,
     projectRoot,
     jdAutoDir,
     uploadsDir: resolve(env.UPLOADS_DIR ?? join(jdAutoDir, "apps", "api", "data", "uploads")),
