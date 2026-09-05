@@ -1,7 +1,9 @@
 "use client";
 
+import { MAX_MEDIA_IMAGE_BYTES } from "@/lib/media/policy.mjs";
+
 const MAX_PHOTO_EDGE = 2048;
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const SANITIZABLE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 type ApiRecord = Record<string, unknown>;
 
@@ -23,22 +25,40 @@ export function parseMoneyToCents(value: string): number {
  */
 async function reencodePhoto(file: File): Promise<Blob> {
   try {
+    if (typeof createImageBitmap !== "function") throw new Error("bitmap_unavailable");
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, "image/jpeg", 0.85);
-    });
-    if (!blob) throw new Error("reencode_failed");
-    return blob;
+    try {
+      if (!Number.isFinite(bitmap.width) || !Number.isFinite(bitmap.height) || bitmap.width < 1 || bitmap.height < 1) {
+        throw new Error("invalid_bitmap_dimensions");
+      }
+      // Lower quality first, then dimensions, until the result is guaranteed
+      // to fit the same limit enforced by every upload endpoint.
+      for (const maxEdge of [MAX_PHOTO_EDGE, 1600, 1280, 1024, 768, 640]) {
+        const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("canvas_context_unavailable");
+        context.drawImage(bitmap, 0, 0, width, height);
+        for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+          const blob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob(resolve, "image/jpeg", quality);
+          });
+          if (blob?.type === "image/jpeg" && blob.size > 0 && blob.size <= MAX_MEDIA_IMAGE_BYTES) {
+            return blob;
+          }
+        }
+      }
+      throw new Error("reencode_too_large");
+    } finally {
+      bitmap.close();
+    }
   } catch {
-    if (/image\/(jpeg|png|webp)/.test(file.type) && file.size <= MAX_PHOTO_BYTES) {
+    const contentType = file.type.trim().toLowerCase();
+    if (SANITIZABLE_CONTENT_TYPES.has(contentType) && file.size > 0 && file.size <= MAX_MEDIA_IMAGE_BYTES) {
       return file;
     }
     throw new Error("No pudimos procesar la imagen. Probá con una foto JPG o PNG.");

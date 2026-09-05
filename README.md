@@ -55,7 +55,6 @@ puede demostrar—. El seed vuelve a sellar el stock, deja un tarifario vigente 
 una oferta con vencimiento a 23 horas, todo marcado como ficticio:
 
 ```bash
-npm run build
 npm run db:seed        # D1 local
 npm run db:seed -- --dry-run   # imprime el SQL sin ejecutarlo
 ```
@@ -76,7 +75,6 @@ se rechaza con su motivo y no se publica — el comando imprime la lista
 completa de publicables y de rechazadas.
 
 ```bash
-npm run build
 npm run stock:sync -- --dry-run     # imprime el resultado sin escribir
 npm run stock:sync                  # publica en la D1 y el R2 locales
 ```
@@ -99,6 +97,11 @@ npm run db:generate
 
 ## Base de datos: migraciones, backup y restauracion
 
+Los comandos de mantenimiento usan `wrangler.data.json`, una configuración
+fuente de D1/R2 local. No requieren un build ni archivos antiguos en `dist` y
+no despliegan un Worker. En remoto, resuelven los identificadores y secretos
+desde el entorno confirmado; el token no se escribe en la configuración.
+
 Las migraciones se generan con Drizzle y se aplican con un script que registra
 cada archivo en `schema_migrations`, asi que el comando es repetible:
 
@@ -119,8 +122,9 @@ npm run db:backup
 ```
 
 El ensayo de restauracion exporta, restaura en una base descartable y compara
-los registros de las tablas que sostienen la operacion; falla si alguna no
-coincide:
+los conteos de todas las tablas del snapshot Drizzle; falla si falta una tabla
+o un conteo difiere. Este control no demuestra igualdad de contenido ni
+restauración de bytes R2:
 
 ```bash
 npm run db:drill
@@ -132,11 +136,13 @@ Para restaurar de verdad hace falta el flag explicito, porque sobrescribe:
 ## Variables de entorno
 
 ```env
-# opcional; si falta, sitemap usa rutas relativas
+# obligatorio para Preview y Production en Vercel
 NEXT_PUBLIC_SITE_URL=https://tu-dominio-confirmado.example
 
 # allowlist del panel, separada por comas; configurar en el entorno de hosting
 PANEL_ALLOWED_EMAILS=equipo@dominio-confirmado.example
+# IDs internos de cuentas confirmadas por JDA; nunca aprobar por email solamente
+PANEL_ALLOWED_ACCOUNT_IDS=
 
 # opcionales; límites de abuso por IP y ventana (tope o tope/minutos).
 # Valores por defecto: búsqueda 30/10m, simulación 30/10m, lead 10/10m,
@@ -170,7 +176,9 @@ ANTHROPIC_API_KEY=
 No inventar ni publicar un dominio, correo o condición comercial. El panel
 requiere una sesión válida de la cuenta propia y el guard de acceso configurado
 para el entorno: tener cuenta no concede acceso interno sin estar en la
-allowlist. V1 usa una única allowlist de administradores:
+allowlist de correos y en `PANEL_ALLOWED_ACCOUNT_IDS`. El registro no verifica
+correo: JDA debe confirmar la titularidad de la cuenta por un canal conocido
+antes de habilitar su ID. V1 usa una única política de administradores:
 todos los correos habilitados operan todo el panel, con auditoría por actor;
 los roles por función quedan para una versión posterior si el equipo crece.
 
@@ -239,6 +247,12 @@ correo**: ambas necesitan un proveedor de envío que el negocio no definió (ver
 [DECISIONES_JDA.md](DECISIONES_JDA.md) #10).
 
 Las rutas viven bajo `/api/v1/account/**`.
+
+Para habilitar un operador, confirmar con esa persona su cuenta y obtener su
+ID de una consulta administrativa autorizada a D1. No aprobar automáticamente
+una cuenta encontrada por email: puede haber sido registrada por otra persona.
+Configurar ID y correo en el entorno correspondiente y probar acceso, rechazo
+de otra cuenta y cierre de sesión. No registrar los valores en Git ni en logs.
 
 ## Panel interno
 

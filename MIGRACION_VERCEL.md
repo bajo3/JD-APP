@@ -4,8 +4,9 @@
 
 **En curso; no desplegar todavía.** GitHub (`bajo3/JD-APP`, rama `main`) es la
 fuente canónica. Vercel será el único hosting cuando se cumplan las puertas de
-esta guía. No se crea un proyecto, no se vincula el checkout y no se ejecuta
-`vercel --prod` antes de completar y verificar los adaptadores.
+esta guía. No usar ni publicar ChatGPT Sites ni tocar `meli-app`. No crear ni
+vincular el proyecto hasta completar las correcciones y contar con el entorno
+confirmado. La publicación será por GitHub, sin `vercel deploy`/`vercel --prod`.
 
 El comando `npm run build` valida de forma automática que cualquier build de
 Vercel tenga panel, D1 y R2 configurados. Si falta una de esas variables, el
@@ -25,7 +26,10 @@ opcionales: sus endpoints se cierran con `503` cuando no están configurados.
   S3 de R2 con un token restringido al bucket; los bytes privados sólo salen
   después de la autorización ya existente. No se reemplaza por URLs públicas.
 - El panel usa la sesión HttpOnly de las cuentas propias más
-  `PANEL_ALLOWED_EMAILS`. Las cabeceras de ChatGPT no son una identidad válida.
+  `PANEL_ALLOWED_EMAILS` y `PANEL_ALLOWED_ACCOUNT_IDS`. Ambos deben coincidir.
+  El registro no verifica email: habilitar únicamente IDs cuya titularidad
+  confirmó JDA, nunca autoaprobar por el correo declarado. Las cabeceras de
+  ChatGPT no son una identidad válida.
 - Todos los secretos se cargan sólo en Vercel o en `.env` ignorado. No se
   versionan ni se muestran en logs, pruebas o documentación.
 
@@ -55,6 +59,7 @@ para los adaptadores son:
 
 ```env
 PANEL_ALLOWED_EMAILS=
+PANEL_ALLOWED_ACCOUNT_IDS=
 NEXT_PUBLIC_SITE_URL=
 ZERNIO_WEBHOOK_SECRET=
 ZERNIO_API_KEY=
@@ -74,21 +79,72 @@ El token D1 y las credenciales R2 se crearán con el mínimo alcance necesario.
 Para R2, Cloudflare documenta credenciales S3 con permisos por bucket; no se
 reutiliza una clave amplia de cuenta.
 
-## Puertas antes de conectar GitHub con Vercel
+## Plan del corte de corrección
+
+Sol auditó y congeló los contratos; Luna ejecuta con revisión de Sol y del
+agente principal. El objetivo activo es cerrar la migración verificable, sin
+agregar capacidades comerciales:
+
+1. Autorización: ID de cuenta habilitado + correo, incluyendo regresión del
+   alta pública que declara un correo interno.
+2. Tooling D1/R2 sin `dist/server` de Vinext: migración, seed, backup y drill
+   reproducibles desde un checkout limpio; sin tocar fuentes comerciales.
+3. D1 remoto: rechazar resultados ausentes o lotes incompletos en lugar de
+   fabricar éxito. Mantener el formato oficial `{batch: [...]}`.
+4. Rate limit: identificar al cliente mediante cabeceras confiables de Vercel,
+   sin un cupo global `unknown` ni confiar en una cabecera Cloudflare del cliente.
+5. Fotos: límite compartido compatible con Functions para entrada y salida,
+   conservando autorización, validación de bytes y lifecycle D1/R2.
+
+### Evidencia y límites
+
+- Base del corte: `7c18cb7`, worktree limpio y coincidente con `origin/main`.
+- `npm test` inicial: build y 419 pruebas en verde.
+- Drill inicial: 36 tablas con conteos coincidentes, usando configuración
+  residual de Vinext. No demuestra reproducibilidad de un checkout nuevo ni
+  equivalencia de contenido, y no valida la API remota.
+- Las nueve variables originales obligatorias están ausentes de `.env` y
+  del proceso; `.env.local` y el vínculo `.vercel` no existen. La nueva variable
+  de IDs tampoco tiene cuentas confirmadas. Se verificaron sólo nombres.
+- Credenciales D1/R2, acceso real, preview protegido y logs remotos pendientes.
+- Comprobación HTTP del build inicial en Next local: catálogo 503
+  `PERSISTENCE_UNAVAILABLE`; resumen del panel y foto privada anónimos 401;
+  cuenta sin sesión 401. El navegador muestra un error recuperable sin datos
+  ficticios y `/panel` redirige al ingreso. No se pudo probar el recorrido
+  autenticado por falta de persistencia remota.
+- Consulta de metadata con Wrangler sobre la D1 local, usando la configuración
+  de datos fuente: cero registros mayores a 4 MiB en `vehicle_media`,
+  `appraisal_media` y `consignment_media`. La revisión remota sigue pendiente.
+
+## Puertas y orden de publicación por GitHub
 
 1. El build Next.js funciona sin bindings de Workers, Vinext ni Sites.
 2. D1 remoto debe pasar pruebas de consulta, lote, conflicto e idempotencia.
 3. R2 remoto debe pasar uploads, compensación y entrega privada de fotos.
-4. El panel debe probar sesión propia, allowlist, denegación y cierre de sesión.
+4. El panel debe probar sesión propia, ambas listas, denegación y cierre de sesión.
 5. Deben pasar `npm test`, lint, TypeScript, `db:generate`, restore drill y una
    prueba manual de rutas críticas contra el entorno privado.
-6. Cargar los nombres de `.env.example` en Vercel, con panel, D1 y R2 para
-   Preview y Production; las claves de Zernio y Anthropic sólo donde se use esa
-   integración. No copiar ni versionar valores en el repositorio.
-7. Recién entonces se importa `bajo3/JD-APP` en Vercel, con `main` como rama de
-   producción. La integración GitHub generará previews por ramas y despliegues
-   de producción por pushes a `main`.
+6. Con las credenciales confirmadas y las pruebas locales completas, crear el
+   proyecto dedicado `JD-APP` (si Vercel exige minúsculas, `jd-app`), verificar
+   que pertenece a `bajo3/JD-APP` y configurar Preview/Production. No copiar
+   valores a Git ni reutilizar el proyecto `meli-app`. Zernio y Anthropic son
+   opcionales: no invocarlos ni gastar sin autorización explícita.
+7. Antes del primer despliegue comprobar Deployment Protection y mantener
+   producción detenida. Generar el preview desde una rama GitHub. Un nombre de
+   rama o una URL difícil de adivinar no reemplazan la protección de acceso.
+8. Probar lectura D1, lote atómico/replay/conflicto, subida R2, lectura privada,
+   fallos intermedios, límites, sesión y logout. Auditar metadata de fotos
+   existentes que superen el nuevo límite de respuesta; no declarar cerrado
+   el recorrido mientras esos objetos sigan sin resolver.
+9. Sólo con el preview validado habilitar pushes de `main` para producción.
+   Conservar acceso privado hasta autorización expresa para hacerlo público.
+   Confirmar SHA GitHub = SHA desplegado, URL y logs sin errores nuevos.
 
 Fuentes de plataforma: [Vercel + GitHub](https://vercel.com/docs/git/vercel-for-github),
 [Next.js en Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs) y
 [API S3 de R2](https://developers.cloudflare.com/r2/get-started/s3/).
+Contratos corroborados para este corte:
+[lotes D1](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/),
+[cabeceras de Vercel](https://vercel.com/docs/headers/request-headers),
+[límites de Functions](https://vercel.com/docs/functions/limitations) y
+[Deployment Protection](https://vercel.com/docs/deployment-protection).

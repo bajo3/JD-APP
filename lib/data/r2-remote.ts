@@ -11,8 +11,8 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { ObjectStore } from "@/lib/data/storage";
+import { MAX_MEDIA_IMAGE_BYTES } from "@/lib/media/policy.mjs";
 
-const MAX_APPRAISAL_IMAGE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_APPRAISAL_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -81,6 +81,9 @@ export class RemoteR2ObjectStore implements ObjectStore {
     if (!ALLOWED_STOCK_IMAGE_TYPES.has(input.contentType)) {
       throw new Error("UNSUPPORTED_STOCK_IMAGE_TYPE");
     }
+    if (input.byteSize <= 0 || input.byteSize > MAX_MEDIA_IMAGE_BYTES) {
+      throw new Error("STOCK_IMAGE_SIZE_OUT_OF_RANGE");
+    }
     const key = `public/stock/${input.vehicleId}/${input.mediaId}`;
     await this.#put(key, input.body, input.contentType, {
       vehicleId: input.vehicleId,
@@ -102,7 +105,7 @@ export class RemoteR2ObjectStore implements ObjectStore {
     if (!ALLOWED_APPRAISAL_IMAGE_TYPES.has(input.contentType)) {
       throw new Error("UNSUPPORTED_APPRAISAL_IMAGE_TYPE");
     }
-    if (input.byteSize <= 0 || input.byteSize > MAX_APPRAISAL_IMAGE_BYTES) {
+    if (input.byteSize <= 0 || input.byteSize > MAX_MEDIA_IMAGE_BYTES) {
       throw new Error("APPRAISAL_IMAGE_SIZE_OUT_OF_RANGE");
     }
     const key = `private/appraisals/${input.appraisalId}/${input.mediaId}`;
@@ -125,7 +128,7 @@ export class RemoteR2ObjectStore implements ObjectStore {
     if (!ALLOWED_APPRAISAL_IMAGE_TYPES.has(input.contentType)) {
       throw new Error("UNSUPPORTED_CONSIGNMENT_IMAGE_TYPE");
     }
-    if (input.byteSize <= 0 || input.byteSize > MAX_APPRAISAL_IMAGE_BYTES) {
+    if (input.byteSize <= 0 || input.byteSize > MAX_MEDIA_IMAGE_BYTES) {
       throw new Error("CONSIGNMENT_IMAGE_SIZE_OUT_OF_RANGE");
     }
     const key = `private/consignments/${input.consignmentId}/${input.mediaId}`;

@@ -10,7 +10,6 @@
 // A restore is destructive, so it always needs --confirm-restore, and the
 // drill never writes to the database it read from.
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -23,6 +22,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { resolveDataRuntime } from "./data-runtime.mjs";
 
 const LF = String.fromCharCode(10);
 const CR = String.fromCharCode(13);
@@ -131,21 +131,7 @@ export function backupFileName(now = new Date()) {
 }
 
 function resolveRuntime(options, projectRoot) {
-  const configPath = join(projectRoot, "dist", "server", "wrangler.json");
-  if (!existsSync(configPath)) {
-    throw new Error("Built Wrangler config not found. Run `npm run build` first.");
-  }
-  const wrangler = join(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
-  if (!existsSync(wrangler)) {
-    throw new Error("Local Wrangler executable not found. Run npm install first.");
-  }
-  return {
-    ...options,
-    configPath,
-    wrangler,
-    projectRoot,
-    persistPath: join(projectRoot, ".wrangler", "state"),
-  };
+  return resolveDataRuntime(options, projectRoot);
 }
 
 function wrangle(runtime, args, { persistPath = runtime.persistPath, capture = false, persist = true } = {}) {
@@ -154,6 +140,7 @@ function wrangle(runtime, args, { persistPath = runtime.persistPath, capture = f
   const result = spawnSync(process.execPath, [runtime.wrangler, ...full], {
     cwd: runtime.projectRoot,
     encoding: "utf8",
+    env: runtime.wranglerEnv,
     stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
   });
   if (result.error) throw result.error;
@@ -161,22 +148,15 @@ function wrangle(runtime, args, { persistPath = runtime.persistPath, capture = f
   return capture ? result.stdout : "";
 }
 
-// `d1 export` has no --persist-to: it reads .wrangler/state next to the
-// Wrangler config it was given, so exporting the local database needs a copy
-// of the built config sitting at the project root.
+// `d1 export` has no --persist-to: the versioned data config lives at the
+// project root, so Wrangler can find the local state without a build artifact.
 function exportTo(runtime, output) {
   mkdirSync(dirname(output), { recursive: true });
-  const rootConfig = join(runtime.projectRoot, `wrangler.export-${process.pid}.json`);
-  copyFileSync(runtime.configPath, rootConfig);
-  try {
-    wrangle(
-      { ...runtime, configPath: rootConfig },
-      ["d1", "export", runtime.database, runtime.remote ? "--remote" : "--local", "-y", "--output", output],
-      { persist: false },
-    );
-  } finally {
-    rmSync(rootConfig, { force: true });
-  }
+  wrangle(
+    runtime,
+    ["d1", "export", runtime.database, runtime.remote ? "--remote" : "--local", "-y", "--output", output],
+    { persist: false },
+  );
   writeFileSync(output, normalizeDump(readFileSync(output, "utf8")), "utf8");
   return output;
 }
@@ -226,46 +206,60 @@ function countsFrom(runtime, persistPath) {
 }
 
 export function compareCounts(source, restored) {
-  return DRILL_TABLES.filter((table) => (source[table] ?? null) !== (restored[table] ?? null)).map(
-    (table) => `${table}: origen ${source[table] ?? "?"} vs restaurado ${restored[table] ?? "?"}`,
-  );
+  const validCount = (value) => Number.isSafeInteger(value) && value >= 0;
+  const format = (value) => (validCount(value) ? String(value) : "inválido");
+  return DRILL_TABLES.filter((table) => {
+    const sourceCount = source && typeof source === "object" ? source[table] : undefined;
+    const restoredCount = restored && typeof restored === "object" ? restored[table] : undefined;
+    return !validCount(sourceCount) || !validCount(restoredCount) || sourceCount !== restoredCount;
+  }).map((table) => {
+    const sourceCount = source && typeof source === "object" ? source[table] : undefined;
+    const restoredCount = restored && typeof restored === "object" ? restored[table] : undefined;
+    return `${table}: origen ${format(sourceCount)} vs restaurado ${format(restoredCount)}`;
+  });
 }
 
 export function runBackup(argv = process.argv.slice(2)) {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   const projectRoot = join(scriptDir, "..");
   const runtime = resolveRuntime(parseArgs(argv), projectRoot);
-
-  if (runtime.restore) {
-    const file = resolve(projectRoot, runtime.restore);
-    if (!existsSync(file)) throw new Error(`Dump file not found: ${file}`);
-    executeFile(runtime, file, runtime.persistPath);
-    console.log(`Restored ${file}.`);
-    return;
-  }
-
-  const output = resolve(projectRoot, runtime.output ?? join("backups", backupFileName()));
-  exportTo(runtime, output);
-  console.log(`Backup written to ${output}`);
-  if (!runtime.drill) return;
-
-  const sandbox = mkdtempSync(join(tmpdir(), "jda-d1-drill-"));
   try {
-    const source = countsFrom(runtime, runtime.persistPath);
-    executeFile({ ...runtime, remote: false }, output, sandbox);
-    const restored = countsFrom({ ...runtime, remote: false }, sandbox);
-    const drift = compareCounts(source, restored);
-    if (drift.length > 0) {
-      console.error("El ensayo de restauración no coincide:");
-      for (const line of drift) console.error(`  - ${line}`);
-      process.exitCode = 1;
+    if (runtime.restore) {
+      const file = resolve(projectRoot, runtime.restore);
+      if (!existsSync(file)) throw new Error(`Dump file not found: ${file}`);
+      executeFile(runtime, file, runtime.persistPath);
+      console.log(`Restored ${file}.`);
       return;
     }
-    console.log(
-      `Ensayo de restauración correcto: ${DRILL_TABLES.length} tablas con los mismos registros.`,
-    );
+
+    const output = resolve(projectRoot, runtime.output ?? join("backups", backupFileName()));
+    exportTo(runtime, output);
+    console.log(`Backup written to ${output}`);
+    if (!runtime.drill) return;
+
+    const sandbox = mkdtempSync(join(tmpdir(), "jda-d1-drill-"));
+    try {
+      const source = countsFrom(runtime, runtime.persistPath);
+      executeFile({ ...runtime, remote: false, configPath: runtime.localConfigPath }, output, sandbox);
+      const restored = countsFrom(
+        { ...runtime, remote: false, configPath: runtime.localConfigPath },
+        sandbox,
+      );
+      const drift = compareCounts(source, restored);
+      if (drift.length > 0) {
+        console.error("El ensayo de restauración no coincide:");
+        for (const line of drift) console.error(`  - ${line}`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `Ensayo de restauración correcto: ${DRILL_TABLES.length} tablas con los mismos conteos de registros.`,
+      );
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   } finally {
-    rmSync(sandbox, { recursive: true, force: true });
+    runtime.cleanup();
   }
 }
 

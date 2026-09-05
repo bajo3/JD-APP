@@ -48,12 +48,17 @@ export class PanelAccessError extends Error {
 
 export type PanelAuthDependencies = {
   allowedEmails?: string | undefined;
+  allowedAccountIds?: string | undefined;
   readSession?: ReadAccountSession;
   cookieHeader?: string | null;
   redirect?: (destination: string) => never;
 };
 
 const EMAIL_PATTERN = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+// Account IDs are generated UUIDs in production. The wider safe alphabet keeps
+// deterministic legacy/test IDs valid without permitting separators, whitespace
+// or values that can be confused with a second list entry.
+const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$/;
 
 /**
  * Reads the server-only allowlist. Missing, blank or malformed configuration
@@ -87,6 +92,57 @@ export function isPanelEmailAllowed(
   return EMAIL_PATTERN.test(normalizedEmail) && allowlist.includes(normalizedEmail);
 }
 
+export function parsePanelAllowedAccountIds(
+  configuredValue: string | undefined,
+): readonly string[] {
+  if (!configuredValue?.trim()) {
+    throw new PanelAccessError("PANEL_ACCESS_NOT_CONFIGURED");
+  }
+
+  const entries = configuredValue.split(",").map((entry) => entry.trim());
+  if (
+    entries.length === 0 ||
+    entries.some((id) => !ACCOUNT_ID_PATTERN.test(id))
+  ) {
+    throw new PanelAccessError("PANEL_ACCESS_NOT_CONFIGURED");
+  }
+
+  return Object.freeze([...new Set(entries)]);
+}
+
+export type PanelAccessConfiguration = Readonly<{
+  allowedEmails: readonly string[];
+  allowedAccountIds: readonly string[];
+}>;
+
+/**
+ * Central policy used by both page guards and admin APIs. Configuration is
+ * parsed once and access requires the same account to match both lists.
+ */
+export function parsePanelAccessConfiguration(input: {
+  allowedEmails?: string;
+  allowedAccountIds?: string;
+} = {}): PanelAccessConfiguration {
+  return Object.freeze({
+    allowedEmails: parsePanelAllowedEmails(
+      input.allowedEmails ?? process.env.PANEL_ALLOWED_EMAILS,
+    ),
+    allowedAccountIds: parsePanelAllowedAccountIds(
+      input.allowedAccountIds ?? process.env.PANEL_ALLOWED_ACCOUNT_IDS,
+    ),
+  });
+}
+
+export function isPanelAccountAllowed(
+  account: Pick<CustomerAccountRecord, "id" | "email">,
+  configuration: PanelAccessConfiguration,
+): boolean {
+  return (
+    configuration.allowedAccountIds.includes(account.id) &&
+    configuration.allowedEmails.includes(normalizeEmail(account.email))
+  );
+}
+
 /**
  * La identidad del panel es una sesión propia de cuenta, guardada en una
  * cookie HttpOnly. La allowlist sigue siendo una segunda barrera independiente:
@@ -110,9 +166,12 @@ export async function requirePanelUser(
     throw new PanelAuthenticationRequired(destination);
   }
 
-  const configuredValue =
-    dependencies.allowedEmails ?? process.env.PANEL_ALLOWED_EMAILS;
-  if (!isPanelEmailAllowed(account.email, configuredValue)) {
+  const configuration = parsePanelAccessConfiguration({
+    allowedEmails: dependencies.allowedEmails ?? process.env.PANEL_ALLOWED_EMAILS,
+    allowedAccountIds:
+      dependencies.allowedAccountIds ?? process.env.PANEL_ALLOWED_ACCOUNT_IDS,
+  });
+  if (!isPanelAccountAllowed(account, configuration)) {
     throw new PanelAccessError("PANEL_ACCESS_DENIED");
   }
 

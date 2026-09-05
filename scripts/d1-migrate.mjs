@@ -2,11 +2,12 @@
 // remote, recording every applied file in schema_migrations so the same
 // command is safe to repeat. Databases created before this tracking table
 // existed must be marked with --baseline <id> once.
-import { existsSync, readdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { resolveDataRuntime } from "./data-runtime.mjs";
 
 const TRACKING_TABLE = `CREATE TABLE IF NOT EXISTS schema_migrations (
   id text PRIMARY KEY NOT NULL,
@@ -54,21 +55,7 @@ export function pendingMigrations(all, applied, baseline) {
 }
 
 function resolveRuntime(options, projectRoot) {
-  const configPath = join(projectRoot, "dist", "server", "wrangler.json");
-  if (!existsSync(configPath)) {
-    throw new Error("Built Wrangler config not found. Run `npm run build` first.");
-  }
-  const wrangler = join(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
-  if (!existsSync(wrangler)) {
-    throw new Error("Local Wrangler executable not found. Run npm install first.");
-  }
-  return {
-    ...options,
-    configPath,
-    wrangler,
-    projectRoot,
-    persistPath: join(projectRoot, ".wrangler", "state"),
-  };
+  return resolveDataRuntime(options, projectRoot);
 }
 
 function wranglerArgs(runtime, extra) {
@@ -90,6 +77,7 @@ function execute(runtime, extra, capture = false) {
   const result = spawnSync(process.execPath, [runtime.wrangler, ...wranglerArgs(runtime, extra)], {
     cwd: runtime.projectRoot,
     encoding: "utf8",
+    env: runtime.wranglerEnv,
     stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
   });
   if (result.error) throw result.error;
@@ -124,54 +112,58 @@ function runSqlFile(runtime, sql, label) {
 export function runMigrations(argv = process.argv.slice(2)) {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   const runtime = resolveRuntime(parseArgs(argv), join(scriptDir, ".."));
-  const all = listMigrations(runtime.projectRoot);
+  try {
+    const all = listMigrations(runtime.projectRoot);
 
-  runSqlFile(runtime, TRACKING_TABLE, "tracking");
-  const applied = parseAppliedIds(
-    execute(runtime, ["--json", "--command", "SELECT id FROM schema_migrations ORDER BY id"], true),
-  );
-  const pending = pendingMigrations(all, applied, runtime.baseline);
+    runSqlFile(runtime, TRACKING_TABLE, "tracking");
+    const applied = parseAppliedIds(
+      execute(runtime, ["--json", "--command", "SELECT id FROM schema_migrations ORDER BY id"], true),
+    );
+    const pending = pendingMigrations(all, applied, runtime.baseline);
 
-  if (runtime.baseline) {
-    const marks = all
-      .slice(0, all.findIndex((migration) => migration.id === runtime.baseline) + 1)
-      .filter((migration) => !applied.includes(migration.id));
-    if (marks.length > 0 && runtime.dryRun) {
-      console.log(`Would baseline ${marks.length} migration(s) up to ${runtime.baseline}.`);
-    } else if (marks.length > 0) {
+    if (runtime.baseline) {
+      const marks = all
+        .slice(0, all.findIndex((migration) => migration.id === runtime.baseline) + 1)
+        .filter((migration) => !applied.includes(migration.id));
+      if (marks.length > 0 && runtime.dryRun) {
+        console.log(`Would baseline ${marks.length} migration(s) up to ${runtime.baseline}.`);
+      } else if (marks.length > 0) {
+        runSqlFile(
+          runtime,
+          marks
+            .map(
+              (migration) =>
+                `INSERT OR IGNORE INTO schema_migrations (id, applied_at) VALUES ('${migration.id}', '${new Date().toISOString()}');`,
+            )
+            .join("\n"),
+          "baseline",
+        );
+        console.log(`Baselined ${marks.length} migration(s) up to ${runtime.baseline}.`);
+      }
+    }
+
+    if (pending.length === 0) {
+      console.log("D1 schema is up to date.");
+      return;
+    }
+    if (runtime.dryRun) {
+      console.log(`Pending: ${pending.map((migration) => migration.id).join(", ")}`);
+      return;
+    }
+
+    for (const migration of pending) {
+      console.log(`Applying ${migration.id}…`);
+      const sql = readFileSync(migration.path, "utf8");
       runSqlFile(
         runtime,
-        marks
-          .map(
-            (migration) =>
-              `INSERT OR IGNORE INTO schema_migrations (id, applied_at) VALUES ('${migration.id}', '${new Date().toISOString()}');`,
-          )
-          .join("\n"),
-        "baseline",
+        `${sql}\n--> statement-breakpoint\nINSERT INTO schema_migrations (id, applied_at) VALUES ('${migration.id}', '${new Date().toISOString()}');`,
+        migration.id,
       );
-      console.log(`Baselined ${marks.length} migration(s) up to ${runtime.baseline}.`);
     }
+    console.log(`Applied ${pending.length} migration(s).`);
+  } finally {
+    runtime.cleanup();
   }
-
-  if (pending.length === 0) {
-    console.log("D1 schema is up to date.");
-    return;
-  }
-  if (runtime.dryRun) {
-    console.log(`Pending: ${pending.map((migration) => migration.id).join(", ")}`);
-    return;
-  }
-
-  for (const migration of pending) {
-    console.log(`Applying ${migration.id}…`);
-    const sql = readFileSync(migration.path, "utf8");
-    runSqlFile(
-      runtime,
-      `${sql}\n--> statement-breakpoint\nINSERT INTO schema_migrations (id, applied_at) VALUES ('${migration.id}', '${new Date().toISOString()}');`,
-      migration.id,
-    );
-  }
-  console.log(`Applied ${pending.length} migration(s).`);
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;

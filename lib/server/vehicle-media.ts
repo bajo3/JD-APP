@@ -6,7 +6,7 @@ import {
 import { objectStore, type ObjectStore } from "@/lib/data/storage";
 import {
   inspectStockImage,
-  MAX_STOCK_IMAGE_BYTES,
+  MAX_MEDIA_IMAGE_BYTES,
   MediaPolicyError,
 } from "@/lib/media/index.mjs";
 import { adminApiRoute, adminData, hashAdminPayload } from "./admin-api";
@@ -68,8 +68,8 @@ async function readLimitedBinary(request: Request): Promise<Uint8Array> {
     if (!Number.isSafeInteger(length) || length < 0) {
       throw new ApiError(400, "INVALID_CONTENT_LENGTH", "El tamaño declarado no es válido.");
     }
-    if (length > MAX_STOCK_IMAGE_BYTES) {
-      throw new ApiError(413, "STOCK_IMAGE_TOO_LARGE", "La imagen supera el máximo de 5 MiB.");
+    if (length > MAX_MEDIA_IMAGE_BYTES) {
+      throw new ApiError(413, "STOCK_IMAGE_TOO_LARGE", "La imagen supera el máximo de 4 MiB.");
     }
   }
   if (!request.body) return new Uint8Array();
@@ -81,13 +81,13 @@ async function readLimitedBinary(request: Request): Promise<Uint8Array> {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_STOCK_IMAGE_BYTES) {
+      if (total > MAX_MEDIA_IMAGE_BYTES) {
         try {
           await reader.cancel("stock_image_too_large");
         } catch {
           // The stable API error takes precedence over transport cleanup.
         }
-        throw new ApiError(413, "STOCK_IMAGE_TOO_LARGE", "La imagen supera el máximo de 5 MiB.");
+        throw new ApiError(413, "STOCK_IMAGE_TOO_LARGE", "La imagen supera el máximo de 4 MiB.");
       }
       chunks.push(value);
     }
@@ -360,6 +360,9 @@ export function publicVehicleMedia(
     const repository = runtime.repository ?? new D1VehicleMediaRepository();
     const media = await repository.findPublic(mediaId);
     if (!media) throw new ApiError(404, "MEDIA_NOT_FOUND", "La foto no está disponible.");
+    if (media.byteSize > MAX_MEDIA_IMAGE_BYTES) {
+      throw new ApiError(413, "STOCK_IMAGE_TOO_LARGE", "La imagen supera el máximo de 4 MiB.");
+    }
     const etag = `"${media.sha256}"`;
     const headers = new Headers({
       "Cache-Control": "public, max-age=300, must-revalidate",

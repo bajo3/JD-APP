@@ -1,5 +1,14 @@
 # Goal Codex — JDA candidata a producción verificable
 
+## Actualización de plataforma — 4 de septiembre de 2026
+
+La instrucción vigente del usuario reemplaza las referencias históricas a
+Sites/Vinext: sólo GitHub `bajo3/JD-APP` → Vercel, con `main` canónica,
+Next.js 16, D1 por API remota y R2 privado por S3. No usar ni publicar Sites ni
+tocar `meli-app`. Sol planifica los contratos y revisa; Luna ejecuta los cambios.
+Las puertas operativas vigentes están en `MIGRACION_VERCEL.md`. Las evidencias
+del Worker anterior deben repetirse en el runtime nuevo antes de publicar.
+
 ## Objetivo único
 
 Convertir el estado actual de Jesús Díaz Automotores en una **candidata a
@@ -87,8 +96,8 @@ Luna no modifica esquemas, reglas, permisos, dinero ni estados de negocio.
 ### Agente principal
 
 El agente principal integra, revisa cruces entre capas, ejecuta las pruebas
-globales, controla el worktree, crea commits coherentes y es el único que puede
-publicar con Sites.
+globales, controla el worktree y sube commits coherentes a GitHub. Sólo la
+integración GitHub → Vercel publica; primero un preview privado validado.
 
 ## Fase 1 — cerrar o aislar consignación virtual
 
@@ -188,8 +197,9 @@ Evidencia mínima de fase 1:
    nunca se sirven desde caché offline.
 7. **Backups:** incluir todas las tablas nuevas y ejecutar un restore drill
    sobre el esquema completo, no sólo comparar conteos parciales.
-8. **Dependencias y plataforma:** no cambiar Vinext/Sites ni agregar servicios
-   externos sin una necesidad aprobada. Mantener compatibilidad Worker ESM.
+8. **Dependencias y plataforma:** completar la migración aprobada a Next/Vercel
+   conservando D1/R2. No agregar servicios externos; Zernio y Anthropic son
+   opcionales y no se invocan realmente sin autorización explícita.
 
 ## Fase 4 — prueba comercial y operativa
 
@@ -212,20 +222,21 @@ punta, por la interfaz y por API:
 La evidencia debe incluir asserts sobre D1/R2 real de Wrangler. Las pruebas
 estáticas de strings complementan, pero no sustituyen, el recorrido.
 
-## Fase 5 — reconciliar local, repositorio y Sites
+## Fase 5 — reconciliar local, GitHub y Vercel
 
 1. No publicar con worktree sucio.
 2. Separar commits por vertical cerrada y conservar autoría/auditoría.
-3. Confirmar que todas las migraciones están versionadas y empaquetadas.
-4. Comparar el commit local validado con el commit de la última versión Sites.
-5. Configurar variables alojadas sólo con valores confirmados. Nunca guardar
-   secretos ni datos operativos en `.openai/hosting.json`.
+3. Confirmar que todas las migraciones están versionadas y son reproducibles.
+4. Comparar el commit local validado con GitHub y el SHA desplegado en Vercel.
+5. Configurar variables alojadas sólo con valores confirmados en Preview y
+   Production. Nunca guardar secretos ni datos operativos en Git.
 6. Ejecutar backup remoto antes de migrar D1 y ensayar restauración en una base
    descartable.
-7. Desplegar primero con acceso privado. Verificar health, rutas críticas,
-   migraciones, D1, R2 y logs de Worker.
+7. Generar un preview privado desde GitHub. Verificar rutas críticas,
+   migraciones, D1, R2, sesión, autorización y logs de Vercel.
 8. No hacer pública la app ni invitar usuarios externos sin aprobación expresa.
-9. Reabrir la misma pestaña de Sites al finalizar; no crear URLs paralelas.
+9. Informar URL privada, SHA y resultado de los logs. Habilitar producción
+   desde pushes a `main` sólo tras cumplir las puertas; no usar deploys de CLI.
 
 ## Comandos de cierre obligatorios
 
@@ -243,7 +254,7 @@ git status --short
 
 Además:
 
-- build y preview real con Wrangler;
+- build y preview real de Next/Vercel;
 - cadena de migraciones desde cero e incremental;
 - pruebas D1/R2 del flujo comercial;
 - revisión de logs alojados tras el despliegue;

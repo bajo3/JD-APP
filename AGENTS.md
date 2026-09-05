@@ -31,20 +31,22 @@ quede técnicamente cerrada y JDA confirme su operación comercial.
 
 ## Estado inicial que debés preservar
 
-- Existe trabajo local sin commit de consignación virtual. No lo borres, no
-  uses reset/checkout destructivo y no descartes cambios que no hayas creado.
+- Inspeccioná el worktree en cada sesión. No uses reset/checkout destructivo
+  ni descartes cambios que no hayas creado.
 - La última versión publicada está detrás del código local. No publiques hasta
   integrar y validar el estado completo.
-- El proyecto usa Next App Router, Vinext, Cloudflare Workers, D1, R2, Drizzle y
-  OpenAI Sites. Conservá esa arquitectura.
-- `.openai/hosting.json` sólo guarda bindings lógicos y el project ID. Los
-  valores del entorno se administran en Sites.
+- Por instrucción confirmada del usuario el 4 de septiembre de 2026, el runtime
+  es Next.js 16 sobre Vercel, con D1 remoto por API y R2 privado por S3.
+  GitHub `bajo3/JD-APP`, rama `main`, es la fuente canónica. No usar ni publicar
+  ChatGPT Sites. No tocar el proyecto Vercel `meli-app`.
+- Secretos sólo en archivos de entorno ignorados o en Vercel; verificar nombres,
+  nunca imprimir valores. Seguir `MIGRACION_VERCEL.md` antes de publicar.
 - Los datos demo deben seguir marcados como DEMO. No inventes stock, tasas,
   teléfonos, emails, condiciones, legales ni identidad de marca.
 
 ## Primera tarea obligatoria
 
-Cerrá los cuatro riesgos críticos de la consignación actualmente en progreso:
+Preservá y verificá los cuatro invariantes de consignación ya implementados:
 
 1. reemplazar la autorización por código público con un upload token aleatorio
    fuerte, guardado solamente como SHA-256;
@@ -55,8 +57,9 @@ Cerrá los cuatro riesgos críticos de la consignación actualmente en progreso:
 4. corregir la migración 0008 y su snapshot para que `npm run db:generate` no
    produzca una migración duplicada.
 
-No empieces otra mejora hasta que esos cuatro puntos tengan pruebas y evidencia
-en D1/R2 real con Wrangler.
+La evidencia histórica con Wrangler está en `PUERTAS_DE_SALIDA.md`. La migración
+de hosting exige volver a probar el recorrido con Next y D1/R2 remotos antes
+de publicar; las pruebas históricas no certifican el nuevo runtime.
 
 ## Forma de trabajar
 
@@ -67,9 +70,9 @@ en D1/R2 real con Wrangler.
    como trabajo que se debe preservar.
 3. Mantené un plan corto y actualizado. Una sola tarea puede estar en progreso.
 4. Cerrá una vertical completa por vez: contrato → persistencia → API → UI →
-   pruebas → Worker real → commit.
+   pruebas → runtime real afectado → commit.
 5. Usá `apply_patch` para editar archivos. No hagas reescrituras destructivas.
-6. Si encontrás una contradicción, resolvela con evidencia del código, D1, Sites
+6. Si encontrás una contradicción, resolvela con evidencia del código, D1, Vercel
    o una decisión confirmada. No elijas silenciosamente la respuesta cómoda.
 7. Si falta un dato de JDA, avanzá hasta la frontera segura, registrá una
    pregunta concreta en `DECISIONES_JDA.md` y mantené la función deshabilitada o
@@ -78,7 +81,8 @@ en D1/R2 real con Wrangler.
    recorrido completo afectado.
 9. Creá commits pequeños y coherentes sólo después de la validación. No incluyas
    cambios ajenos fuera de la vertical.
-10. El agente principal es el único autorizado a empaquetar y publicar Sites.
+10. El agente principal integra y sube cada implementación validada a GitHub.
+    La publicación se realiza únicamente por la integración GitHub → Vercel.
 
 ## División Sol / Luna
 
@@ -106,7 +110,9 @@ Usá Luna después de congelar los contratos para:
 - previews de archivos y cleanup de object URLs;
 - recorridos visuales y pruebas de UI.
 
-Luna no modifica migraciones, permisos, estados de negocio, fórmulas ni dinero.
+Por instrucción del usuario, Sol planifica y Luna ejecuta. Para permisos,
+persistencia y otros cambios de riesgo, Sol congela primero el contrato y
+revisa después la implementación de Luna. No se cambian esas reglas sin revisión.
 
 ### Coordinación
 
@@ -206,9 +212,9 @@ No publiques una versión nueva hasta demostrar:
 - migraciones completas y repetibles;
 - backup y restore drill del esquema completo;
 - pruebas globales verdes sin errores ocultos;
-- recorrido comercial real en Wrangler;
+- recorrido comercial en Next/Vercel con D1/R2 remotos;
 - fotos privadas inaccesibles públicamente;
-- entorno Sites con valores confirmados;
+- entorno Vercel con valores confirmados para Preview y Production;
 - ausencia de errores nuevos en logs;
 - commit publicado exactamente igual a `HEAD`;
 - documentación y UI coherentes con el alcance real.
@@ -226,3 +232,13 @@ publicada corresponde al commit validado.
 Ante un bloqueo comercial, no inventes. Entregá el software hasta la frontera
 segura, documentá exactamente qué debe confirmar JDA y continuá con todo lo que
 no dependa de esa respuesta.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

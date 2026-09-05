@@ -57,10 +57,14 @@ const { R2ObjectStore } = await import("../lib/data/storage.ts");
 const VEHICLE_ID = "vehicle-1";
 const AT = new Date("2026-08-17T15:00:00.000Z");
 const previousAllowlist = process.env.PANEL_ALLOWED_EMAILS;
+const previousAccountIds = process.env.PANEL_ALLOWED_ACCOUNT_IDS;
 process.env.PANEL_ALLOWED_EMAILS = "admin@example.com";
+process.env.PANEL_ALLOWED_ACCOUNT_IDS = "user-1";
 test.after(() => {
   if (previousAllowlist === undefined) delete process.env.PANEL_ALLOWED_EMAILS;
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
+  if (previousAccountIds === undefined) delete process.env.PANEL_ALLOWED_ACCOUNT_IDS;
+  else process.env.PANEL_ALLOWED_ACCOUNT_IDS = previousAccountIds;
 });
 
 const adminAuth = Object.freeze({

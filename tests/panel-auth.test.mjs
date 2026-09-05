@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   PanelAccessError,
   isPanelEmailAllowed,
+  isPanelAccountAllowed,
+  parsePanelAllowedAccountIds,
+  parsePanelAccessConfiguration,
   parsePanelAllowedEmails,
   requirePanelUser,
 } from "../lib/server/panel-auth.ts";
@@ -35,6 +38,19 @@ test("panel allowlist normalizes case, whitespace and duplicates", () => {
   );
 });
 
+test("panel account ID allowlist accepts safe IDs and rejects malformed entries", () => {
+  assert.deepEqual(
+    parsePanelAllowedAccountIds(" user-test-1,00000000-0000-0000-0000-000000000000,user-test-1 "),
+    ["user-test-1", "00000000-0000-0000-0000-000000000000"],
+  );
+  for (const configured of [undefined, "", " ", "user-test-1,", "bad id", ",user-test-1"]) {
+    assert.throws(
+      () => parsePanelAllowedAccountIds(configured),
+      (error) => error instanceof PanelAccessError && error.code === "PANEL_ACCESS_NOT_CONFIGURED",
+    );
+  }
+});
+
 test("missing, blank and malformed configuration fail closed", () => {
   for (const configured of [undefined, "", "  ", "valid@example.com,", "invalid"]) {
     assert.throws(
@@ -50,6 +66,7 @@ test("requirePanelUser derives the panel identity from an allowed account sessio
   let receivedCookie = null;
   const user = await requirePanelUser("/panel", {
     allowedEmails: "operador@example.com",
+    allowedAccountIds: "user-test-1",
     cookieHeader: "jda_session=test-token",
     async readSession(cookieHeader) {
       receivedCookie = cookieHeader;
@@ -62,12 +79,29 @@ test("requirePanelUser derives the panel identity from an allowed account sessio
   assert.ok(Object.isFrozen(user));
 });
 
+test("panel access requires the same account to match both allowlists", async () => {
+  const configuration = parsePanelAccessConfiguration({
+    allowedEmails: "operador@example.com",
+    allowedAccountIds: "user-test-1",
+  });
+  assert.equal(isPanelAccountAllowed(authenticatedAccount, configuration), true);
+  assert.equal(
+    isPanelAccountAllowed({ ...authenticatedAccount, id: "other-account" }, configuration),
+    false,
+  );
+  assert.equal(
+    isPanelAccountAllowed({ ...authenticatedAccount, email: "other@example.com" }, configuration),
+    false,
+  );
+});
+
 test("denied access does not leak the configured allowlist", async () => {
   const configured = "admin-secret@example.com";
   await assert.rejects(
     () =>
       requirePanelUser("/panel", {
         allowedEmails: configured,
+        allowedAccountIds: "user-test-1",
         async readSession() {
           return authenticatedAccount;
         },
@@ -86,6 +120,7 @@ test("an anonymous panel request redirects to the existing account login", async
   await assert.rejects(
     () => requirePanelUser("/panel/tasaciones", {
       allowedEmails: "operador@example.com",
+      allowedAccountIds: "user-test-1",
       cookieHeader: null,
       async readSession() {
         return null;

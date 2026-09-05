@@ -1,7 +1,5 @@
 import {
-  existsSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -9,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { resolveDataRuntime } from "./data-runtime.mjs";
 
 const DEMO_DISCLAIMER =
   "TARIFARIO DEMO: valores ficticios para previsualización. No constituye una oferta, aprobación ni condición comercial real.";
@@ -305,57 +304,22 @@ function parseArgs(argv) {
 
 export function resolveSeedRuntime(argv = [], projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..")) {
   const options = parseArgs(argv);
-  const configPath = join(projectRoot, "dist", "server", "wrangler.json");
-  const serverEntry = join(projectRoot, "dist", "server", "index.js");
-  if (!existsSync(configPath) || !existsSync(serverEntry)) {
-    throw new Error(
-      "Built Wrangler config not found. Run `npm run build` before seeding D1.",
-    );
-  }
-  let config;
-  try {
-    config = JSON.parse(readFileSync(configPath, "utf8"));
-  } catch {
-    throw new Error("Built Wrangler config is not valid JSON. Run `npm run build` again.");
-  }
-  const bindings = Array.isArray(config.d1_databases) ? config.d1_databases : [];
-  if (!bindings.some((binding) => binding?.binding === options.database)) {
-    throw new Error(
-      `D1 binding ${options.database} is missing from dist/server/wrangler.json.`,
-    );
-  }
-  return {
-    ...options,
-    configPath,
-    persistPath: join(projectRoot, ".wrangler", "state"),
-    projectRoot,
-  };
+  return resolveDataRuntime(options, projectRoot);
 }
 
 export function runDemoSeed(argv = process.argv.slice(2)) {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   const runtime = resolveSeedRuntime(argv, join(scriptDir, ".."));
-  const sql = buildDemoSeedSql();
-  if (runtime.dryRun) {
-    process.stdout.write(sql);
-    return;
-  }
-
-  const wrangler = join(
-    scriptDir,
-    "..",
-    "node_modules",
-    "wrangler",
-    "bin",
-    "wrangler.js",
-  );
-  if (!existsSync(wrangler)) {
-    throw new Error("Local Wrangler executable not found. Run npm install first.");
-  }
-
-  const tempDir = mkdtempSync(join(tmpdir(), "jda-demo-seed-"));
-  const sqlFile = join(tempDir, "seed.sql");
+  let tempDir = null;
   try {
+    const sql = buildDemoSeedSql();
+    if (runtime.dryRun) {
+      process.stdout.write(sql);
+      return;
+    }
+
+    tempDir = mkdtempSync(join(tmpdir(), "jda-demo-seed-"));
+    const sqlFile = join(tempDir, "seed.sql");
     writeFileSync(sqlFile, sql, { encoding: "utf8", flag: "wx" });
     const target = runtime.remote ? "--remote" : "--local";
     const args = [
@@ -372,13 +336,14 @@ export function runDemoSeed(argv = process.argv.slice(2)) {
     if (!runtime.remote) args.push("--persist-to", runtime.persistPath);
     const result = spawnSync(
       process.execPath,
-      [wrangler, ...args],
-      { cwd: runtime.projectRoot, encoding: "utf8", stdio: "inherit" },
+      [runtime.wrangler, ...args],
+      { cwd: runtime.projectRoot, env: runtime.wranglerEnv, encoding: "utf8", stdio: "inherit" },
     );
     if (result.error) throw result.error;
     if (result.status !== 0) process.exitCode = result.status ?? 1;
   } finally {
-    rmSync(tempDir, { recursive: true, force: true });
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+    runtime.cleanup();
   }
 }
 

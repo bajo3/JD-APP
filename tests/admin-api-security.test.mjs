@@ -41,6 +41,7 @@ test("admin authentication fails closed for anonymous, missing configuration and
   await assert.rejects(
     () => authenticateAdminRequest(request(), {
       allowedEmails: "operator@example.com",
+      allowedAccountIds: "operator-1",
       async readSession() { return null; },
     }),
     (error) => error instanceof ApiError && error.status === 401 && error.code === "ADMIN_AUTH_REQUIRED",
@@ -48,6 +49,7 @@ test("admin authentication fails closed for anonymous, missing configuration and
   await assert.rejects(
     () => authenticateAdminRequest(request(), {
       allowedEmails: "",
+      allowedAccountIds: "operator-1",
       async readSession() { return authenticatedAccount; },
     }),
     (error) => error instanceof ApiError && error.status === 503 && error.code === "ADMIN_ACCESS_NOT_CONFIGURED",
@@ -55,6 +57,7 @@ test("admin authentication fails closed for anonymous, missing configuration and
   await assert.rejects(
     () => authenticateAdminRequest(request(), {
       allowedEmails: "operator@example.com",
+      allowedAccountIds: "operator-1",
       async readSession() {
         return { ...authenticatedAccount, email: "intruder@example.com" };
       },
@@ -69,6 +72,7 @@ test("admin authentication accepts only the allowlisted account session", async 
     "oai-authenticated-user-email": "forged@example.com",
   }), {
     allowedEmails: "operator@example.com",
+    allowedAccountIds: "operator-1",
     async readSession() { return authenticatedAccount; },
   });
   assert.deepEqual(actor, {
@@ -80,7 +84,9 @@ test("admin authentication accepts only the allowlisted account session", async 
 
 test("admin API reuses safe JSON headers and the 64 KiB streaming body limit", async () => {
   const previous = process.env.PANEL_ALLOWED_EMAILS;
+  const previousIds = process.env.PANEL_ALLOWED_ACCOUNT_IDS;
   process.env.PANEL_ALLOWED_EMAILS = "operator@example.com";
+  process.env.PANEL_ALLOWED_ACCOUNT_IDS = "operator-1";
   try {
     const headers = {
       "content-type": "application/json",
@@ -98,5 +104,7 @@ test("admin API reuses safe JSON headers and the 64 KiB streaming body limit", a
   } finally {
     if (previous === undefined) delete process.env.PANEL_ALLOWED_EMAILS;
     else process.env.PANEL_ALLOWED_EMAILS = previous;
+    if (previousIds === undefined) delete process.env.PANEL_ALLOWED_ACCOUNT_IDS;
+    else process.env.PANEL_ALLOWED_ACCOUNT_IDS = previousIds;
   }
 });

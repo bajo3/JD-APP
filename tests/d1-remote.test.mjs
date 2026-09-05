@@ -105,3 +105,82 @@ test("remote D1 rejects unsafe bindings and statements from another database", a
     (error) => error instanceof RemoteD1Error && error.code === "D1_REMOTE_CONFIG_INVALID",
   );
 });
+
+test("remote D1 rejects incomplete envelopes and never fabricates success", async () => {
+  const malformed = [
+    {},
+    { success: false, result: [{ success: true, results: [], meta: {} }] },
+    { success: true, result: [] },
+    { success: true, result: [null] },
+    { success: true, result: ["result"] },
+    { success: true, result: [{ success: true, results: [], meta: null }] },
+    { success: true, result: [{ success: true, results: null, meta: {} }] },
+  ];
+  for (const payload of malformed) {
+    const database = new RemoteD1Database({
+      ...config,
+      async fetch() { return new Response(JSON.stringify(payload), { status: 200 }); },
+    });
+    await assert.rejects(
+      database.prepare("SELECT 1").all(),
+      (error) => error instanceof RemoteD1Error && error.code === "D1_REMOTE_REQUEST_FAILED",
+    );
+  }
+});
+
+test("remote D1 enforces response cardinality and avoids a network call for an empty batch", async () => {
+  let calls = 0;
+  const database = new RemoteD1Database({
+    ...config,
+    async fetch() {
+      calls += 1;
+      return successfulResponse([{ success: true, results: [], meta: {} }]);
+    },
+  });
+  assert.deepEqual(await database.batch([]), []);
+  assert.equal(calls, 0);
+
+  const oneWithTwo = new RemoteD1Database({
+    ...config,
+    async fetch() {
+      return successfulResponse([
+        { success: true, results: [], meta: {} },
+        { success: true, results: [], meta: {} },
+      ]);
+    },
+  });
+  await assert.rejects(
+    oneWithTwo.prepare("UPDATE vehicle SET status = 'PAUSED'").run(),
+    (error) => error instanceof RemoteD1Error && error.code === "D1_REMOTE_REQUEST_FAILED",
+  );
+
+  const twoWithOne = new RemoteD1Database({
+    ...config,
+    async fetch() {
+      return successfulResponse([{ success: true, results: [], meta: {} }]);
+    },
+  });
+  await assert.rejects(
+    twoWithOne.batch([twoWithOne.prepare("SELECT 1"), twoWithOne.prepare("SELECT 2")]),
+    (error) => error instanceof RemoteD1Error && error.code === "D1_REMOTE_REQUEST_FAILED",
+  );
+});
+
+test("remote D1 accepts optional results/meta and preserves multi-statement exec", async () => {
+  const database = new RemoteD1Database({
+    ...config,
+    async fetch(_url, init) {
+      const body = JSON.parse(init.body);
+      if (body.sql) {
+        return successfulResponse([
+          { success: true },
+          { success: true, results: [{ changed: 1 }] },
+        ]);
+      }
+      return successfulResponse([{ success: true }]);
+    },
+  });
+  const result = await database.exec("CREATE TABLE a (id INTEGER); INSERT INTO a VALUES (1);");
+  assert.deepEqual(result.results, []);
+  assert.deepEqual(result.meta, {});
+});

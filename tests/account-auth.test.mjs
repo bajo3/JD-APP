@@ -24,6 +24,7 @@ import {
   logoutResponse,
   registerAccountResponse,
 } from "../lib/server/account-api.ts";
+import { PanelAccessError, requirePanelUser } from "../lib/server/panel-auth.ts";
 
 const root = new URL("../", import.meta.url);
 const NOW = new Date("2026-08-26T12:00:00.000Z");
@@ -328,6 +329,35 @@ test("el alta crea la cuenta, normaliza el correo y abre sesión", async () => {
   assert.ok(!JSON.stringify(body).includes(PASSWORD));
   assert.equal(repo.state.accounts.size, 1);
   assert.equal(repo.state.sessions.size, 1);
+});
+
+test("registrarse con un correo permitido no concede panel sin el ID autorizado", async () => {
+  const { repo, cookie, token } = await registeredAccount();
+  const session = await repo.findSessionAccount(
+    await hashSessionToken(token),
+    NOW.toISOString(),
+  );
+  assert.ok(session);
+
+  const readSession = async () => session.account;
+  await assert.rejects(
+    () => requirePanelUser("/panel", {
+      cookieHeader: cookie,
+      allowedEmails: "martin@correo.com",
+      allowedAccountIds: "admin-account-id",
+      readSession,
+    }),
+    (error) => error instanceof PanelAccessError && error.code === "PANEL_ACCESS_DENIED",
+  );
+
+  const panelUser = await requirePanelUser("/panel", {
+    cookieHeader: cookie,
+    allowedEmails: "martin@correo.com",
+    allowedAccountIds: session.account.id,
+    readSession,
+  });
+  assert.equal(panelUser.userId, session.account.id);
+  assert.equal(panelUser.normalizedEmail, "martin@correo.com");
 });
 
 test("el alta exige aceptar los términos y rechaza el correo repetido", async () => {

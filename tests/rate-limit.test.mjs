@@ -206,6 +206,88 @@ test("withRateLimit envuelve la ruta y responde 429 con el cuerpo estable", asyn
   assert.equal(body.error.code, "RATE_LIMITED");
 });
 
+test("en Vercel sólo usa una IP válida de x-vercel-forwarded-for y rechaza spoofing", async () => {
+  const previousVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  test.after(() => {
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
+  });
+
+  const backend = memoryRepository();
+  const runtime = { repository: backend.repository, now: AT };
+  const vercelRequest = (vercelIp, cloudflareIp) => new Request("http://localhost/api/v1/leads", {
+    method: "POST",
+    headers: {
+      "x-vercel-forwarded-for": vercelIp,
+      "CF-Connecting-IP": cloudflareIp,
+    },
+  });
+  await enforceRateLimit(vercelRequest("203.0.113.10", "198.51.100.7"), "public.lead", runtime);
+  await enforceRateLimit(vercelRequest("203.0.113.10", "192.0.2.99"), "public.lead", runtime);
+  assert.equal(backend.rows.size, 1);
+
+  await assert.rejects(
+    () => enforceRateLimit(vercelRequest("203.0.113.10, 198.51.100.8", "192.0.2.99"), "public.lead", runtime),
+    (error) => error.status === 503 && error.code === "RATE_LIMIT_IDENTITY_UNAVAILABLE",
+  );
+  await assert.rejects(
+    () => enforceRateLimit(vercelRequest("not-an-ip", "192.0.2.99"), "public.lead", runtime),
+    (error) => error.status === 503 && error.code === "RATE_LIMIT_IDENTITY_UNAVAILABLE",
+  );
+  await assert.rejects(
+    () => enforceRateLimit(vercelRequest(undefined, "192.0.2.99"), "public.lead", runtime),
+    (error) => error.status === 503 && error.code === "RATE_LIMIT_IDENTITY_UNAVAILABLE",
+  );
+  assert.equal(backend.rows.size, 1);
+});
+
+test("en Vercel normaliza representaciones IPv6 equivalentes para el cupo", async () => {
+  const previousVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  test.after(() => {
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
+  });
+
+  const backend = memoryRepository();
+  const runtime = { repository: backend.repository, now: AT };
+  const requestWithVercelIp = (ip) => new Request("http://localhost/api/v1/leads", {
+    method: "POST",
+    headers: { "x-vercel-forwarded-for": ip },
+  });
+  await enforceRateLimit(requestWithVercelIp("2001:0DB8:0:0:0:0:0:1"), "public.lead", runtime);
+  await enforceRateLimit(requestWithVercelIp("2001:db8::1"), "public.lead", runtime);
+  await enforceRateLimit(requestWithVercelIp("::ffff:192.0.2.1"), "public.lead", runtime);
+  await enforceRateLimit(requestWithVercelIp("0:0:0:0:0:ffff:c000:201"), "public.lead", runtime);
+  assert.equal(backend.rows.size, 1);
+});
+
+test("withRateLimit responde 503 sin llamar al handler cuando falta identidad Vercel", async () => {
+  const previousVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  test.after(() => {
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
+  });
+
+  const backend = memoryRepository();
+  let handled = false;
+  const wrapped = withRateLimit(
+    "public.lead",
+    async () => {
+      handled = true;
+      return new Response("{}", { status: 201 });
+    },
+    { repository: backend.repository, now: AT },
+  );
+  const response = await wrapped(new Request("http://localhost/api/v1/leads", { method: "POST" }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "RATE_LIMIT_IDENTITY_UNAVAILABLE");
+  assert.equal(handled, false);
+  assert.equal(backend.rows.size, 0);
+});
+
 test("las rutas públicas de mutación pasan por el limitador", async () => {
   const expectations = [
     ["app/api/v1/leads/route.ts", "public.lead"],

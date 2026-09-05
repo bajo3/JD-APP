@@ -5,7 +5,19 @@ Cada una dice qué resuelve el código y qué falta de parte del negocio. Lo que
 depende de una decisión de JDA no se marca como cumplido aunque el código ya
 lo soporte: el software puede estar listo y la condición comercial no.
 
-Última verificación: 1 de septiembre de 2026, con 257 pruebas, lint, TypeScript
+## Revalidación de la migración — 4 de septiembre de 2026
+
+El checkout inicial `7c18cb7` pasa build y 419 pruebas. Eso no certifica todavía
+la migración a Vercel: la revisión encontró autorización por email no verificado,
+tooling dependiente de `dist` antiguo, respuestas D1 incompletas aceptadas,
+identidad de rate limit de Cloudflare y fotos mayores al límite de Vercel.
+El corte de corrección y sus pruebas se registran en `MIGRACION_VERCEL.md`.
+
+Faltan las credenciales remotas y la habilitación de cuentas internas. No hay
+evidencia nueva de Preview/Production. Las verificaciones con Worker que siguen
+son **históricas** y no sustituyen el recorrido Next → D1/R2 remotos.
+
+Verificación histórica: 1 de septiembre de 2026, con 257 pruebas, lint, TypeScript
 y build en verde, la D1 local migrada hasta 0011, el ensayo de restauración
 sobre las veintiocho tablas del esquema, el limitador de abuso por IP cubriendo
 todas las mutaciones públicas y la consignación aislada como V1.1 endurecida.
@@ -58,10 +70,11 @@ través de su `label` de 44 y 53 px.
 
 **11. Backups y restauración ensayados.**
 `npm run db:drill` exporta la base, la restaura en una base descartable y
-compara las veintiocho tablas del esquema —la lista sale del snapshot vigente
+compara los conteos de las tablas del esquema —la lista sale del snapshot vigente
 de Drizzle, no de una enumeración escrita a mano, así que una migración nueva no
-puede dejar una tabla afuera— y falla si alguna no coincide. El volcado se reordena para que sea
-restaurable. Ensayado contra la D1 local.
+puede dejar una tabla afuera— y falla si falta un conteo o alguno no coincide.
+El volcado se reordena para que sea restaurable. Ensayado contra la D1 local;
+el control de conteos no certifica igualdad de contenido ni backup de bytes R2.
 
 **12. Fotos privadas inaccesibles públicamente.**
 Las fotos de tasación viven en R2 privado, se sirven sólo por el binario
@@ -121,9 +134,11 @@ exacta vive en [DECISIONES_JDA.md](DECISIONES_JDA.md) (#5). Cuando JDA
 confirme el E.164 y la modalidad, se carga en el perfil del negocio.
 
 **6. Accesos internos del panel probados.**
-El panel exige la allowlist `PANEL_ALLOWED_EMAILS` y falla cerrado ante
-configuración vacía o inválida (`tests/panel-auth.test.mjs`). Falta cargar las
-cuentas reales del equipo y probar el acceso con ellas.
+El panel exige sesión propia, `PANEL_ALLOWED_EMAILS` y
+`PANEL_ALLOWED_ACCOUNT_IDS`, y falla cerrado ante configuración vacía o inválida.
+Falta confirmar la titularidad de las cuentas internas, cargar sus IDs y
+correos en cada entorno y probarlas contra el runtime remoto. Registrar un
+correo de la allowlist no habilita una cuenta pública como administrador.
 
 ## Abiertas
 
@@ -231,12 +246,12 @@ con los mismos importes —cuota, precio y saldo— y el aviso DEMO; lead con
 contexto 201 y replay idempotente; handoff 409 `WHATSAPP_NOT_CONFIGURED` porque el
 perfil sigue sin numero confirmado, con `whatsappE164: null` en la API.
 
-## Nota de entorno
+## Nota histórica de entorno
 
-`npm start` (`vinext start`) falla en Windows con `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
-El preview del build de producción se hace con Wrangler y la D1 local
-(`npx wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/state`,
-documentado en el README); con ese preview se ejecutó el recorrido comercial
+El error de `vinext start` en Windows pertenecía al runtime anterior. Ahora
+`npm start` ejecuta Next.js y requiere la persistencia remota para operar.
+Wrangler se conserva para mantenimiento y ensayos de D1/R2, sin publicar
+Workers ni Sites. Con el preview del Worker anterior se ejecutó el recorrido comercial
 completo contra el Worker real: búsqueda con resultados alcanzables, simulación
 con alta, replay idéntico y conflicto 409, snapshot público por API y página,
 lead con contexto y replay, handoff que responde `WHATSAPP_NOT_CONFIGURED`

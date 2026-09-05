@@ -90,10 +90,14 @@ test("una fecha ilegible no rompe el cálculo: se trata como contestada", () => 
 });
 
 const previousAllowlist = process.env.PANEL_ALLOWED_EMAILS;
+const previousAccountIds = process.env.PANEL_ALLOWED_ACCOUNT_IDS;
 process.env.PANEL_ALLOWED_EMAILS = "vendedor@jda.test";
+process.env.PANEL_ALLOWED_ACCOUNT_IDS = "seller-1";
 test.after(() => {
   if (previousAllowlist === undefined) delete process.env.PANEL_ALLOWED_EMAILS;
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
+  if (previousAccountIds === undefined) delete process.env.PANEL_ALLOWED_ACCOUNT_IDS;
+  else process.env.PANEL_ALLOWED_ACCOUNT_IDS = previousAccountIds;
 });
 
 const AUTHORIZED_USER = {

@@ -17,6 +17,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { resolveDataRuntime } from "./data-runtime.mjs";
 
 export const PROVIDER = "jd-auto";
 export const DEFAULT_PHOTO_LIMIT = 12;
@@ -555,15 +557,7 @@ function readDotEnv(path) {
 }
 
 function resolveRuntime(options, projectRoot) {
-  const configPath = join(projectRoot, "dist", "server", "wrangler.json");
-  if (!existsSync(configPath)) {
-    throw new Error("No se encontró la configuración construida de Wrangler. Corré `npm run build`.");
-  }
-  const wrangler = join(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
-  if (!existsSync(wrangler)) throw new Error("Falta Wrangler. Corré `npm install`.");
-  const config = JSON.parse(readFileSync(configPath, "utf8"));
-  const bucket = config.r2_buckets?.[0]?.bucket_name;
-  if (!bucket) throw new Error("La configuración construida no declara un bucket R2.");
+  const dataRuntime = resolveDataRuntime({ ...options, requireR2: true }, projectRoot);
 
   const jdAutoDir = resolve(options.jdAutoDir ?? join(projectRoot, "..", "JD-Auto"));
   const env = readDotEnv(join(jdAutoDir, ".env"));
@@ -579,12 +573,8 @@ function resolveRuntime(options, projectRoot) {
   if (!sheetUrl) throw new Error("El .env de JD-Auto no define la URL de la planilla publicada.");
 
   return {
-    ...options,
+    ...dataRuntime,
     projectRoot,
-    configPath,
-    wrangler,
-    bucket,
-    persistPath: join(projectRoot, ".wrangler", "state"),
     jdAutoDir,
     uploadsDir: resolve(env.UPLOADS_DIR ?? join(jdAutoDir, "apps", "api", "data", "uploads")),
     supabaseUrl,
@@ -608,6 +598,7 @@ function d1Execute(runtime, extra, capture = false) {
   const result = spawnSync(process.execPath, [runtime.wrangler, ...args], {
     cwd: runtime.projectRoot,
     encoding: "utf8",
+    env: runtime.wranglerEnv,
     stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
   });
   if (result.error) throw result.error;
@@ -626,7 +617,30 @@ function parseRows(stdout) {
   }
 }
 
-function r2Put(runtime, key, file, contentType) {
+async function r2Put(runtime, key, file, contentType) {
+  if (runtime.remote) {
+    runtime.r2Client ??= new S3Client({
+      region: "auto",
+      endpoint: runtime.r2Config.endpoint,
+      credentials: {
+        accessKeyId: runtime.r2Config.accessKeyId,
+        secretAccessKey: runtime.r2Config.secretAccessKey,
+      },
+    });
+    try {
+      await runtime.r2Client.send(
+        new PutObjectCommand({
+          Bucket: runtime.bucket,
+          Key: key,
+          Body: readFileSync(file),
+          ContentType: contentType,
+        }),
+      );
+    } catch {
+      throw new Error("No se pudo escribir la foto en R2 remoto.");
+    }
+    return;
+  }
   const args = [
     "r2",
     "object",
@@ -644,6 +658,7 @@ function r2Put(runtime, key, file, contentType) {
   const result = spawnSync(process.execPath, [runtime.wrangler, ...args], {
     cwd: runtime.projectRoot,
     encoding: "utf8",
+    env: runtime.wranglerEnv,
     stdio: ["ignore", "ignore", "inherit"],
   });
   if (result.error) throw result.error;
@@ -668,7 +683,7 @@ async function fetchSupabaseVehicles(runtime) {
     },
   });
   if (!response.ok) {
-    throw new Error(`No se pudo leer Supabase: ${response.status} ${await response.text()}`);
+    throw new Error(`No se pudo leer Supabase: ${response.status}`);
   }
   const rows = await response.json();
   return rows.map((row) => ({
@@ -745,44 +760,45 @@ function report(title, rows) {
 export async function runStockSync(argv = process.argv.slice(2)) {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   const runtime = resolveRuntime(parseArgs(argv), join(scriptDir, ".."));
-  const startedAt = new Date().toISOString();
-  const actor = Object.freeze({
-    userId: `sync:${PROVIDER}`,
-    email: `sync@${PROVIDER}.local`,
-    displayName: "Sincronización JD-Auto",
-  });
+  try {
+    const startedAt = new Date().toISOString();
+    const actor = Object.freeze({
+      userId: `sync:${PROVIDER}`,
+      email: `sync@${PROVIDER}.local`,
+      displayName: "Sincronización JD-Auto",
+    });
 
-  const [units, vehicles] = await Promise.all([
-    fetchSheetUnits(runtime),
-    fetchSupabaseVehicles(runtime),
-  ]);
-  const { accepted, rejected } = planStockSync({
-    units,
-    vehicles,
-    photoLimit: runtime.photoLimit,
-  });
+    const [units, vehicles] = await Promise.all([
+      fetchSheetUnits(runtime),
+      fetchSupabaseVehicles(runtime),
+    ]);
+    const { accepted, rejected } = planStockSync({
+      units,
+      vehicles,
+      photoLimit: runtime.photoLimit,
+    });
 
-  console.log(
-    `Planilla: ${units.length} unidades · JD-Auto activas: ${vehicles.length} · publicables: ${accepted.length} · rechazadas: ${rejected.length}`,
-  );
-  report(
-    "Publicables:",
-    accepted.map(
-      (item) =>
-        `${item.unitId} — ${item.record.make} ${item.record.model} ${item.record.trim} ${item.record.year} · ${(item.record.priceCents / 100).toLocaleString("es-AR")} ${item.record.currency} · ${item.photos.length} fotos`,
-    ),
-  );
-  report(
-    "Rechazadas (no se publican):",
-    rejected.map((item) => `${item.unitId} (fila ${item.sheetRow}) — ${item.reason}: ${item.detail}`),
-  );
+    console.log(
+      `Planilla: ${units.length} unidades · JD-Auto activas: ${vehicles.length} · publicables: ${accepted.length} · rechazadas: ${rejected.length}`,
+    );
+    report(
+      "Publicables:",
+      accepted.map(
+        (item) =>
+          `${item.unitId} — ${item.record.make} ${item.record.model} ${item.record.trim} ${item.record.year} · ${(item.record.priceCents / 100).toLocaleString("es-AR")} ${item.record.currency} · ${item.photos.length} fotos`,
+      ),
+    );
+    report(
+      "Rechazadas (no se publican):",
+      rejected.map((item) => `${item.unitId} (fila ${item.sheetRow}) — ${item.reason}: ${item.detail}`),
+    );
 
-  if (runtime.dryRun) {
-    console.log("\n--dry-run: no se escribió nada.");
-    return { accepted, rejected, written: false };
-  }
+    if (runtime.dryRun) {
+      console.log("\n--dry-run: no se escribió nada.");
+      return { accepted, rejected, written: false };
+    }
 
-  const existing = parseRows(
+    const existing = parseRows(
     d1Execute(
       runtime,
       [
@@ -793,7 +809,7 @@ export async function runStockSync(argv = process.argv.slice(2)) {
       true,
     ),
   );
-  const withHashes = parseRows(
+    const withHashes = parseRows(
     d1Execute(
       runtime,
       [
@@ -804,18 +820,18 @@ export async function runStockSync(argv = process.argv.slice(2)) {
       true,
     ),
   );
-  const hashByCode = new Map(withHashes.map((row) => [row.external_id, row.payload_hash]));
-  for (const row of existing) row.sync_hash = hashByCode.get(row.external_code) ?? null;
+    const hashByCode = new Map(withHashes.map((row) => [row.external_id, row.payload_hash]));
+    for (const row of existing) row.sync_hash = hashByCode.get(row.external_code) ?? null;
 
-  const runId = `run-${startedAt.replace(/[̀-ͯ]/g, "").slice(0, 14)}-${PROVIDER}`;
-  const idFactory = (seed) => `jda-${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`;
-  const existingByCode = new Map(existing.map((row) => [row.external_code, row]));
-  for (const item of accepted) {
-    item.vehicleId = existingByCode.get(item.unitId)?.id ?? idFactory(`vehicle:${item.unitId}`);
-  }
+    const runId = `run-${startedAt.replace(/[̀-ͯ]/g, "").slice(0, 14)}-${PROVIDER}`;
+    const idFactory = (seed) => `jda-${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`;
+    const existingByCode = new Map(existing.map((row) => [row.external_code, row]));
+    for (const item of accepted) {
+      item.vehicleId = existingByCode.get(item.unitId)?.id ?? idFactory(`vehicle:${item.unitId}`);
+    }
 
-  const tempDir = mkdtempSync(join(tmpdir(), "jda-stock-sync-"));
-  try {
+    const tempDir = mkdtempSync(join(tmpdir(), "jda-stock-sync-"));
+    try {
     const { media, failures } = runtime.skipPhotos
       ? { media: [], failures: [] }
       : await preparePhotos(runtime, accepted, tempDir);
@@ -838,7 +854,7 @@ export async function runStockSync(argv = process.argv.slice(2)) {
     });
 
     for (const photo of media) {
-      r2Put(runtime, photo.r2Key, photo.file, photo.contentType);
+      await r2Put(runtime, photo.r2Key, photo.file, photo.contentType);
     }
     const sqlFile = join(tempDir, "stock-sync.sql");
     writeFileSync(sqlFile, sql, { encoding: "utf8" });
@@ -848,8 +864,11 @@ export async function runStockSync(argv = process.argv.slice(2)) {
       `\nCorrida ${runId}: ${changed} unidades con cambios, ${media.length} fotos publicadas en ${runtime.remote ? "producción" : "la base local"}.`,
     );
     return { accepted, rejected, media, changed, written: true };
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   } finally {
-    rmSync(tempDir, { recursive: true, force: true });
+    runtime.cleanup();
   }
 }
 

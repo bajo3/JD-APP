@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MAX_MEDIA_IMAGE_BYTES } from "@/lib/media/policy.mjs";
 
 type Vehicle = { id: string; name: string; version: number };
 type Media = {
@@ -12,8 +13,6 @@ type Media = {
   version: number;
   status: "PENDING" | "READY" | "ARCHIVED" | "FAILED";
 };
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export function VehicleMediaManager({ vehicles }: { vehicles: Vehicle[] }) {
   const initialVehicle = vehicles[0];
@@ -74,8 +73,8 @@ export function VehicleMediaManager({ vehicles }: { vehicles: Vehicle[] }) {
 
   async function upload() {
     if (!file || !vehicle) return;
-    if (file.size > MAX_IMAGE_BYTES) {
-      setMessage("La foto supera el máximo de 5 MiB.");
+    if (file.size > MAX_MEDIA_IMAGE_BYTES) {
+      setMessage("La foto supera el máximo de 4 MiB.");
       return;
     }
     if (altText.trim().length < 3) {
@@ -202,7 +201,7 @@ export function VehicleMediaManager({ vehicles }: { vehicles: Vehicle[] }) {
             disabled={!vehicle || loading}
           />
         </label>
-        <small>JPEG, PNG, WebP o AVIF · máximo 5 MiB</small>
+        <small>JPEG, PNG, WebP o AVIF · máximo 4 MiB</small>
         <button
           type="button"
           className="panel-action"

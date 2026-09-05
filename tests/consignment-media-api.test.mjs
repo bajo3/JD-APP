@@ -55,10 +55,14 @@ const AT = new Date("2026-08-19T12:00:00.000Z");
 const UPLOAD_TOKEN = "consignment-upload-token-example-256bits-aaaaaaaaa";
 const UPLOAD_TOKEN_HASH = await digestImageSha256(new TextEncoder().encode(UPLOAD_TOKEN));
 const previousAllowlist = process.env.PANEL_ALLOWED_EMAILS;
+const previousAccountIds = process.env.PANEL_ALLOWED_ACCOUNT_IDS;
 process.env.PANEL_ALLOWED_EMAILS = "admin@example.com";
+process.env.PANEL_ALLOWED_ACCOUNT_IDS = "user-1";
 test.after(() => {
   if (previousAllowlist === undefined) delete process.env.PANEL_ALLOWED_EMAILS;
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
+  if (previousAccountIds === undefined) delete process.env.PANEL_ALLOWED_ACCOUNT_IDS;
+  else process.env.PANEL_ALLOWED_ACCOUNT_IDS = previousAccountIds;
 });
 
 const adminAuth = Object.freeze({

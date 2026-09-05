@@ -2,6 +2,7 @@ import {
   D1RateLimitRepository,
   type RateLimitRepositoryLike,
 } from "@/lib/data/rate-limit-repository";
+import { isIP } from "node:net";
 import { ApiError, apiErrorResponse } from "./api";
 
 export const RATE_LIMIT_RESOURCES = [
@@ -63,8 +64,41 @@ function configuredLimit(resource: RateLimitResource): ResourceLimit {
 }
 
 function identity(request: Request): string {
-  const ip = request.headers.get("CF-Connecting-IP")?.trim() ?? "";
-  return /^[A-Za-z0-9.:_-]{1,64}$/.test(ip) ? ip : "unknown";
+  const headerName = process.env.VERCEL === "1"
+    ? "x-vercel-forwarded-for"
+    : "CF-Connecting-IP";
+  const raw = request.headers.get(headerName)?.trim() ?? "";
+  if (process.env.VERCEL !== "1") {
+    return isIP(raw) > 0 ? normalizeIp(raw) : "unknown";
+  }
+  // Vercel provides one trusted client address. A list, a forwarded chain or
+  // any malformed value must fail before touching the D1 counter.
+  if (!raw || /[\s,]/.test(raw) || isIP(raw) === 0) {
+    throw new ApiError(
+      503,
+      "RATE_LIMIT_IDENTITY_UNAVAILABLE",
+      "No pudimos verificar el origen de la solicitud.",
+    );
+  }
+  return normalizeIp(raw);
+}
+
+function normalizeIp(ip: string): string {
+  if (isIP(ip) === 4) {
+    return ip.split(".").map((part) => String(Number(part))).join(".");
+  }
+  return normalizeIpv6(ip);
+}
+
+function normalizeIpv6(ip: string): string {
+  if (ip.includes("%")) return ip.toLowerCase();
+  try {
+    // WHATWG URL performs canonical compression and also normalizes
+    // IPv4-mapped addresses (for example ::ffff:192.0.2.1).
+    return new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  } catch {
+    return ip.toLowerCase();
+  }
 }
 
 export async function enforceRateLimit(

@@ -127,7 +127,9 @@ Decisiones:
 - Node.js como runtime del servidor.
 - Cloudflare D1 como fuente de verdad interna para la V1.
 - Cloudflare R2 como almacenamiento de imágenes y archivos.
-- OpenAI Sites/vinext como superficie de hosting y ejecución compatible con Cloudflare.
+- GitHub `bajo3/JD-APP` → Vercel como único flujo de publicación; Next.js 16
+  usa D1 por API remota y R2 privado por S3. Sites/Vinext fueron retirados del
+  runtime por decisión del usuario; las puertas están en `MIGRACION_VERCEL.md`.
 - Tailwind CSS y componentes accesibles para la interfaz.
 - Zod para contratos y validación compartida.
 - Drizzle ORM y migraciones SQL explícitas.
@@ -595,7 +597,9 @@ Estados mínimos de cada pantalla:
 
 - Sin cuenta obligatoria para clientes en V1.
 - Sesión anónima en cookie firmada, segura y HttpOnly.
-- Panel con autenticación del proveedor de identidad y allowlist de correos; sin roles en la V1.
+- Panel con sesión propia HttpOnly y habilitación manual de ID de cuenta más
+  correo. La cuenta pública no verifica email y nunca concede permisos por sí
+  sola. Una única política de administrador, sin roles en la V1.
 - Autorización dentro de los casos de uso.
 - Rate limiting y protección adaptativa contra abuso.
 - CSP, HSTS y cabeceras de seguridad.

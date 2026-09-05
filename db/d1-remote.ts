@@ -19,14 +19,9 @@ type RemoteQuery = Readonly<{
 }>;
 
 type RemoteResult = Readonly<{
-  results?: Record<string, unknown>[];
-  success?: boolean;
-  meta?: Record<string, unknown>;
-}>;
-
-type RemoteEnvelope = Readonly<{
-  success?: boolean;
-  result?: RemoteResult[];
+  results: Record<string, unknown>[];
+  success: true;
+  meta: Record<string, unknown>;
 }>;
 
 export class RemoteD1Error extends Error {
@@ -65,19 +60,23 @@ export class RemoteD1Database implements D1Database {
   }
 
   async batch<T = D1Result>(statements: D1PreparedStatement[]): Promise<T[]> {
+    if (statements.length === 0) return [];
     const queries = statements.map((statement) => {
       if (!(statement instanceof RemoteD1PreparedStatement) || statement.database !== this) {
         throw new RemoteD1Error("D1_REMOTE_CONFIG_INVALID");
       }
       return statement.query;
     });
-    const results = await this.#query({ batch: queries });
+    const results = await this.#query({ batch: queries }, queries.length);
     return results.map(toD1Result) as T[];
   }
 
   async exec(query: string): Promise<D1Result> {
-    const [result] = await this.#query({ sql: query, params: [] });
-    return toD1Result(result ?? { results: [], success: true, meta: {} });
+    // `exec` is allowed to carry SQL with multiple statements. The REST API
+    // may return one result per statement; callers of run/first/all remain
+    // strict and require exactly one result.
+    const [result] = await this.#query({ sql: query, params: [] }, null);
+    return toD1Result(result);
   }
 
   async dump(): Promise<ArrayBuffer> {
@@ -85,11 +84,14 @@ export class RemoteD1Database implements D1Database {
   }
 
   async run(query: RemoteQuery): Promise<D1Result> {
-    const [result] = await this.#query(query);
-    return toD1Result(result ?? { results: [], success: true, meta: {} });
+    const [result] = await this.#query(query, 1);
+    return toD1Result(result);
   }
 
-  async #query(body: { sql: string; params: readonly D1Parameter[] } | { batch: readonly RemoteQuery[] }): Promise<RemoteResult[]> {
+  async #query(
+    body: { sql: string; params: readonly D1Parameter[] } | { batch: readonly RemoteQuery[] },
+    expectedResults: number | null,
+  ): Promise<RemoteResult[]> {
     let response: Response;
     try {
       response = await this.#fetch(
@@ -110,13 +112,13 @@ export class RemoteD1Database implements D1Database {
 
     if (!response.ok) throw new RemoteD1Error("D1_REMOTE_REQUEST_FAILED");
 
-    let payload: RemoteEnvelope;
+    let payload: unknown;
     try {
-      payload = await response.json() as RemoteEnvelope;
+      payload = await response.json() as unknown;
     } catch {
       throw new RemoteD1Error("D1_REMOTE_REQUEST_FAILED");
     }
-    if (!payload.success || !Array.isArray(payload.result) || payload.result.some((result) => result.success !== true)) {
+    if (!isRemoteEnvelope(payload, expectedResults)) {
       throw new RemoteD1Error("D1_REMOTE_REQUEST_FAILED");
     }
     return payload.result;
@@ -165,10 +167,50 @@ class RemoteD1PreparedStatement implements D1PreparedStatement {
 
 function toD1Result(result: RemoteResult): D1Result {
   return {
-    results: result.results ?? [],
-    success: result.success === true,
-    meta: result.meta ?? {},
+    results: result.results,
+    success: true,
+    meta: result.meta,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeRemoteResult(value: unknown): RemoteResult | null {
+  if (!isRecord(value) || value.success !== true) return null;
+  const rawResults = value.results;
+  if (
+    rawResults !== undefined &&
+    (!Array.isArray(rawResults) || rawResults.some((row) => !isRecord(row)))
+  ) {
+    return null;
+  }
+  const rawMeta = value.meta;
+  if (rawMeta !== undefined && !isRecord(rawMeta)) return null;
+  return {
+    success: true,
+    results: (rawResults ?? []) as Record<string, unknown>[],
+    meta: (rawMeta ?? {}) as Record<string, unknown>,
+  };
+}
+
+function isRemoteEnvelope(
+  value: unknown,
+  expectedResults: number | null,
+): value is { success: true; result: RemoteResult[] } {
+  if (!isRecord(value) || value.success !== true || !Array.isArray(value.result)) {
+    return false;
+  }
+  if (expectedResults === null) {
+    if (value.result.length === 0) return false;
+  } else if (value.result.length !== expectedResults) {
+    return false;
+  }
+  const normalized = value.result.map(normalizeRemoteResult);
+  if (normalized.some((result) => result === null)) return false;
+  (value as { result: RemoteResult[] }).result = normalized as RemoteResult[];
+  return true;
 }
 
 function toParameter(value: unknown): D1Parameter {

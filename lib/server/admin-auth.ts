@@ -1,5 +1,10 @@
 import { ApiError } from "./api";
-import { PanelAccessError, parsePanelAllowedEmails } from "./panel-auth";
+import {
+  PanelAccessError,
+  isPanelAccountAllowed,
+  parsePanelAccessConfiguration,
+  type PanelAccessConfiguration,
+} from "./panel-auth";
 import type { CustomerAccountRecord } from "@/lib/data/customer-account-repository";
 
 export type AdminApiActor = Readonly<{
@@ -10,6 +15,7 @@ export type AdminApiActor = Readonly<{
 
 export type AdminAuthOptions = {
   allowedEmails?: string;
+  allowedAccountIds?: string;
   readSession?: (cookieHeader: string | null) => Promise<CustomerAccountRecord | null>;
 };
 
@@ -25,9 +31,13 @@ export async function authenticateAdminRequest(
   }
   const email = account.email.trim().toLowerCase();
 
-  let allowed: readonly string[];
+  let configuration: PanelAccessConfiguration;
   try {
-    allowed = parsePanelAllowedEmails(options.allowedEmails ?? process.env.PANEL_ALLOWED_EMAILS);
+    configuration = parsePanelAccessConfiguration({
+      allowedEmails: options.allowedEmails ?? process.env.PANEL_ALLOWED_EMAILS,
+      allowedAccountIds:
+        options.allowedAccountIds ?? process.env.PANEL_ALLOWED_ACCOUNT_IDS,
+    });
   } catch (error) {
     if (error instanceof PanelAccessError) {
       throw new ApiError(
@@ -38,7 +48,7 @@ export async function authenticateAdminRequest(
     }
     throw error;
   }
-  if (!allowed.includes(email)) {
+  if (!isPanelAccountAllowed(account, configuration)) {
     throw new ApiError(403, "ADMIN_FORBIDDEN", "No tenés permisos para esta operación.");
   }
 

@@ -8,7 +8,7 @@ import { objectStore, type ObjectStore } from "@/lib/data/storage";
 import {
   digestImageSha256,
   inspectAppraisalImage,
-  MAX_APPRAISAL_IMAGE_BYTES,
+  MAX_MEDIA_IMAGE_BYTES,
   MediaPolicyError,
   stripImageMetadata,
 } from "@/lib/media/index.mjs";
@@ -87,8 +87,8 @@ async function readLimitedBinary(request: Request): Promise<Uint8Array> {
     if (!Number.isSafeInteger(length) || length < 0) {
       throw new ApiError(400, "INVALID_CONTENT_LENGTH", "El tamaño declarado no es válido.");
     }
-    if (length > MAX_APPRAISAL_IMAGE_BYTES) {
-      throw new ApiError(413, "CONSIGNMENT_IMAGE_TOO_LARGE", "La foto supera el máximo de 10 MiB.");
+    if (length > MAX_MEDIA_IMAGE_BYTES) {
+      throw new ApiError(413, "CONSIGNMENT_IMAGE_TOO_LARGE", "La foto supera el máximo de 4 MiB.");
     }
   }
   if (!request.body) return new Uint8Array();
@@ -100,13 +100,13 @@ async function readLimitedBinary(request: Request): Promise<Uint8Array> {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_APPRAISAL_IMAGE_BYTES) {
+      if (total > MAX_MEDIA_IMAGE_BYTES) {
         try {
           await reader.cancel("consignment_image_too_large");
         } catch {
           // The stable API error takes precedence over transport cleanup.
         }
-        throw new ApiError(413, "CONSIGNMENT_IMAGE_TOO_LARGE", "La foto supera el máximo de 10 MiB.");
+        throw new ApiError(413, "CONSIGNMENT_IMAGE_TOO_LARGE", "La foto supera el máximo de 4 MiB.");
       }
       chunks.push(value);
     }
@@ -393,6 +393,9 @@ export function adminConsignmentPhotoBytes(
     const media = await repository.findReadyByMediaId(consignmentId, mediaId);
     if (!media) {
       throw new ApiError(404, "ADMIN_RESOURCE_NOT_FOUND", "La foto no existe.");
+    }
+    if (media.byteSize > MAX_MEDIA_IMAGE_BYTES) {
+      throw new ApiError(413, "CONSIGNMENT_IMAGE_TOO_LARGE", "La foto supera el máximo de 4 MiB.");
     }
     const object = await (runtime.objects ?? objectStore).getPrivateObject(media.r2Key);
     if (!object) {

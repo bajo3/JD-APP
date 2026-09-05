@@ -53,10 +53,14 @@ const { digestImageSha256 } = await import("../lib/media/index.mjs");
 
 const AT = new Date("2026-08-18T12:00:00.000Z");
 const previousAllowlist = process.env.PANEL_ALLOWED_EMAILS;
+const previousAccountIds = process.env.PANEL_ALLOWED_ACCOUNT_IDS;
 process.env.PANEL_ALLOWED_EMAILS = "admin@example.com";
+process.env.PANEL_ALLOWED_ACCOUNT_IDS = "user-1";
 test.after(() => {
   if (previousAllowlist === undefined) delete process.env.PANEL_ALLOWED_EMAILS;
   else process.env.PANEL_ALLOWED_EMAILS = previousAllowlist;
+  if (previousAccountIds === undefined) delete process.env.PANEL_ALLOWED_ACCOUNT_IDS;
+  else process.env.PANEL_ALLOWED_ACCOUNT_IDS = previousAccountIds;
 });
 
 const adminAuth = Object.freeze({
@@ -352,6 +356,48 @@ test("admin photo listing and bytes delivery require an authenticated panel user
     backend.runtime,
   );
   assert.equal(missing.status, 404);
+});
+
+test("a denied panel account cannot read appraisal metadata or private bytes", async () => {
+  const backend = fakeBackend();
+  await publicAppraisalPhotoUpload(uploadRequest(), "TAS-ABC123", backend.runtime);
+  let repositoryCalls = 0;
+  const guardedRepository = new Proxy(backend.runtime.repository, {
+    get(target, property, receiver) {
+      if (property === "findAppraisalById" || property === "findByMediaId") {
+        return async () => {
+          repositoryCalls += 1;
+          throw new Error("private data read before authorization");
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  const deniedAuth = {
+    allowedEmails: "admin@example.com",
+    allowedAccountIds: "another-account",
+    async readSession() {
+      return {
+        id: "user-1", email: "admin@example.com", name: "Operador", phoneNormalized: null,
+        leadId: null, status: "ACTIVE", failedAttempts: 0, lockedUntil: null,
+        lastLoginAt: null, version: 1, createdAt: AT.toISOString(),
+      };
+    },
+  };
+  const list = await adminAppraisalPhotoList(
+    new Request("http://localhost/api/v1/admin/appraisals/appraisal-1/photos"),
+    "appraisal-1",
+    { ...backend.runtime, auth: deniedAuth, repository: guardedRepository },
+  );
+  const bytes = await adminAppraisalPhotoBytes(
+    new Request("http://localhost/api/v1/admin/appraisals/appraisal-1/photos/media-1"),
+    "appraisal-1",
+    "media-1",
+    { ...backend.runtime, auth: deniedAuth, repository: guardedRepository },
+  );
+  assert.equal(list.status, 403);
+  assert.equal(bytes.status, 403);
+  assert.equal(repositoryCalls, 0);
 });
 
 function sqliteD1(database) {
