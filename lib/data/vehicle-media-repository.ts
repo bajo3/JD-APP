@@ -78,11 +78,11 @@ function mediaFromRow(row: Record<string, unknown>): VehicleMediaRecord {
 }
 
 const MEDIA_SELECT = `SELECT
-  id, vehicle_id AS vehicleId, r2_key AS r2Key, public_url AS publicUrl,
-  content_type AS contentType, alt_text AS altText, byte_size AS byteSize,
-  sha256, status, sort_order AS sortOrder, width, height, version,
-  uploaded_by AS uploadedBy, created_at AS createdAt, updated_at AS updatedAt,
-  archived_at AS archivedAt
+  id, vehicle_id AS "vehicleId", r2_key AS "r2Key", public_url AS "publicUrl",
+  content_type AS "contentType", alt_text AS "altText", byte_size AS "byteSize",
+  sha256, status, sort_order AS "sortOrder", width, height, version,
+  uploaded_by AS "uploadedBy", created_at AS "createdAt", updated_at AS "updatedAt",
+  archived_at AS "archivedAt"
 FROM vehicle_media`;
 
 export class D1VehicleMediaRepository {
@@ -123,7 +123,7 @@ export class D1VehicleMediaRepository {
   ): Promise<"conflict" | VehicleMediaRecord | null> {
     const replay = await this.d1
       .prepare(
-        `SELECT request_hash AS requestHash, resource_id AS resourceId
+        `SELECT request_hash AS "requestHash", resource_id AS "resourceId"
          FROM admin_idempotency
          WHERE scope = 'vehicle_media.upload' AND idempotency_key = ? LIMIT 1`,
       )

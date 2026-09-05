@@ -60,9 +60,9 @@ type UploadContext = Readonly<{
 type IdempotencyRow = { requestHash: string; resourceId: string };
 
 const MEDIA_SELECT = `SELECT
-  id, appraisal_id AS appraisalId, r2_key AS r2Key, content_type AS contentType,
-  byte_size AS byteSize, sha256, capture_type AS captureType,
-  sort_order AS sortOrder, uploaded_at AS uploadedAt, created_at AS createdAt
+  id, appraisal_id AS "appraisalId", r2_key AS "r2Key", content_type AS "contentType",
+  byte_size AS "byteSize", sha256, capture_type AS "captureType",
+  sort_order AS "sortOrder", uploaded_at AS "uploadedAt", created_at AS "createdAt"
 FROM appraisal_media`;
 
 function changes(result: D1Result<unknown> | undefined): number {
@@ -127,7 +127,7 @@ export class D1AppraisalMediaRepository {
   ): Promise<"conflict" | AppraisalMediaRecord | null> {
     const replay = await this.d1
       .prepare(
-        `SELECT request_hash AS requestHash, resource_id AS resourceId
+        `SELECT request_hash AS "requestHash", resource_id AS "resourceId"
          FROM admin_idempotency
          WHERE scope = 'appraisal_media.upload' AND idempotency_key = ? LIMIT 1`,
       )

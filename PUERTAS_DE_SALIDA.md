@@ -351,3 +351,77 @@ Corregido copiando esas tres banderas explícitamente desde `options`; agregado
 un test de regresión en `tests/stock-sync.test.mjs` que verifica la
 propagación contra un fixture de JD-Auto en un directorio temporal, sin tocar
 Supabase.
+
+## Bug crítico de aliases SQL sin comillas — 5 de septiembre de 2026
+
+Al cerrar la vertical de consignación virtual se agregó
+`tests/e2e-consignment-journey.test.mjs`: el primer intento de subir una foto
+contra la Supabase real devolvió `404 CONSIGNMENT_NOT_FOUND` — un caso que
+todas las pruebas contra fixtures/`node:sqlite` daban por bueno.
+
+Causa raíz: Postgres pliega a minúsculas cualquier identificador sin comillas,
+alias de columna incluidos. Todo `SELECT columna_snake AS aliasCamelCase` sin
+comillas devuelve la fila con la clave `aliascamelcase` (todo en minúsculas),
+no `aliasCamelCase`; el código JS que lee `row.aliasCamelCase` obtenía
+`undefined` — nunca un error, así que fallaba en silencio. SQLite, en cambio,
+conserva el alias tal cual se escribió, por lo que ninguna prueba contra
+fixtures lo detectaba. Comprobado de forma empírica contra la Supabase real:
+`SELECT 1 AS someCamelCase` devuelve la fila con clave `somecamelcase`.
+
+Alcance verificado con `grep -rE "AS [a-z][a-zA-Z0-9_]*[A-Z]"` sobre
+`lib/`, `scripts/` y `db/`: **seis archivos**, todos con el mismo patrón,
+corregidos poniendo cada alias entre comillas dobles (`AS "aliasCamelCase"`,
+que Postgres y SQLite conservan tal cual):
+
+- `lib/data/consignment-media-repository.ts` — `findConsignmentByPublicCode()`
+  comparaba `consignment.uploadTokenHash` (siempre `undefined`, convertido a
+  la cadena literal `"undefined"`) contra el hash real del bearer: **ninguna
+  carga de foto de consignación contra la Supabase real podía autorizarse**,
+  siempre con 404 aunque el token fuera correcto.
+- `lib/data/vehicle-media-repository.ts` — `findPublic()` es la que sirve las
+  fotos públicas de stock; con el bug, cada registro traía `r2Key: "undefined"`
+  y el resto de los campos igual de rotos. Los bytes de las 120 fotos reales
+  publicadas el mismo día (ver arriba) están bien en Supabase Storage, pero
+  **la ruta pública que las sirve no podía resolver su clave real** hasta este
+  fix — sin este corte, el catálogo recién publicado habría mostrado fotos
+  rotas en cuanto alguien lo probara contra la Supabase real.
+- `lib/data/lead-conversion-repository.ts` — `findLinkedContext()` (replay de
+  idempotencia y handoff de WhatsApp) y el resto de sus consultas con alias;
+  no lo detectó la prueba e2e existente porque el camino feliz no pasa por
+  `findLinkedContext()`.
+- `lib/data/appraisal-media-repository.ts`, `lib/data/consignment-intake-repository.ts`,
+  `lib/data/admin-repositories.ts` (incluye `currentConflict()`, compartida por
+  **todas** las mutaciones del panel: un conflicto de versión venía devolviendo
+  el `currentVersion` que mandó el cliente, no el real, en cualquier recurso).
+
+Validación: `npm test` (424 pruebas verdes, 9 omitidas sin `SUPABASE_DB_URL`/
+`SUPABASE_STORAGE_*`), lint y `tsc --noEmit` limpios, y las tres corridas
+reales (`tests/supabase-remote.test.mjs`, `tests/e2e-commercial-journey.test.mjs`,
+`tests/e2e-consignment-journey.test.mjs`) verdes contra la Supabase y el
+Supabase Storage reales — la de consignación fallaba con 404 antes del fix y
+pasa después, sin cambiar nada más que las comillas.
+
+## Consignación virtual verificada contra infraestructura real — 5 de septiembre de 2026
+
+`tests/e2e-consignment-journey.test.mjs` cierra el hueco que señalaba el
+criterio 9 de `GOAL_JDA_CANDIDATA_PRODUCCION.md` ("el recorrido completo fue
+probado en UI, API, Supabase y R2 [hoy Supabase Storage] con evidencia"): las
+pruebas de `tests/consignment-*.test.mjs` cubren el mismo recorrido contra
+fixtures/`node:sqlite`, no contra Postgres real ni el bucket real. La prueba
+nueva corre dentro de una transacción de Postgres que siempre revierte (mismo
+patrón que `tests/e2e-commercial-journey.test.mjs`) y borra a mano, en un
+`finally`, cada objeto que escribe en Supabase Storage (no participa de la
+transacción). Cubre de punta a punta: alta con token de 256 bits entregado una
+sola vez, cinco fotos reales (FRONT/REAR/SIDE/INTERIOR/DASHBOARD) subidas,
+limpiadas de metadatos y confirmadas `READY` contra el bucket real, el
+servidor rechazando pasar a `IN_REVIEW` sin las cinco, la revisión real
+(`SUBMITTED → IN_REVIEW → ACCEPTED`) y el cierre rechazando cargas tardías.
+
+De los ocho puntos de la Fase 1 de `GOAL_JDA_CANDIDATA_PRODUCCION.md`, los
+siete primeros (token de carga, alta atómica, claves de cliente estables,
+ciclo recuperable, exigencia server-side de cinco fotos, migración consolidada
+a Postgres, privacidad/EXIF/límites) ya estaban implementados y probados
+contra fixtures desde antes de esta sesión (ver `AGENTS.md`); esta prueba es
+la primera evidencia de que también funcionan contra la infraestructura real.
+El punto 8 (dividir `ConsignmentForm.tsx`) ya estaba resuelto: 210 líneas,
+sin archivo de una sola línea.

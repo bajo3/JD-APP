@@ -80,12 +80,12 @@ export interface LeadConversionRepository {
 type LeadSqlRow = Record<string, unknown>;
 
 const LEAD_SELECT = `SELECT
-  id, idempotency_key AS idempotencyKey,
-  create_request_hash AS createRequestHash, name,
-  phone_normalized AS phoneNormalized, email, source, status, score,
-  assigned_to AS assignedTo, lost_reason AS lostReason,
-  last_contacted_at AS lastContactedAt, version,
-  created_at AS createdAt, updated_at AS updatedAt
+  id, idempotency_key AS "idempotencyKey",
+  create_request_hash AS "createRequestHash", name,
+  phone_normalized AS "phoneNormalized", email, source, status, score,
+  assigned_to AS "assignedTo", lost_reason AS "lostReason",
+  last_contacted_at AS "lastContactedAt", version,
+  created_at AS "createdAt", updated_at AS "updatedAt"
 FROM lead`;
 
 function leadFromRow(row: LeadSqlRow): LeadRow {
@@ -241,12 +241,12 @@ export class D1LeadConversionRepository implements LeadConversionRepository {
   }): Promise<LinkedLeadContext | null> {
     const row = await this.d1
       .prepare(
-        `SELECT lead.id AS leadId, simulation.id AS simulationId,
-                simulation.public_code AS simulationCode,
-                simulation.lead_id AS simulationLeadId,
-                vehicle.id AS vehicleId, vehicle.slug AS vehicleSlug,
-                vehicle.make || ' ' || vehicle.model || ' ' || vehicle.trim AS vehicleLabel,
-                vehicle.year AS vehicleYear, simulation.promotion_id AS promotionId
+        `SELECT lead.id AS "leadId", simulation.id AS "simulationId",
+                simulation.public_code AS "simulationCode",
+                simulation.lead_id AS "simulationLeadId",
+                vehicle.id AS "vehicleId", vehicle.slug AS "vehicleSlug",
+                vehicle.make || ' ' || vehicle.model || ' ' || vehicle.trim AS "vehicleLabel",
+                vehicle.year AS "vehicleYear", simulation.promotion_id AS "promotionId"
          FROM lead
          JOIN lead_interest AS interest
            ON interest.lead_id = lead.id AND interest.kind = 'SIMULATION'
@@ -347,8 +347,8 @@ export class D1LeadConversionRepository implements LeadConversionRepository {
   ): Promise<LeadConversionResult> {
     const row = await this.d1
       .prepare(
-        `SELECT simulation.lead_id AS leadId, simulation.vehicle_id AS vehicleId,
-                vehicle.slug AS vehicleSlug
+        `SELECT simulation.lead_id AS "leadId", simulation.vehicle_id AS "vehicleId",
+                vehicle.slug AS "vehicleSlug"
          FROM simulation
          LEFT JOIN vehicle ON vehicle.id = simulation.vehicle_id
          WHERE simulation.id = ? AND simulation.public_code = ? LIMIT 1`,
@@ -364,7 +364,7 @@ export class D1LeadConversionRepository implements LeadConversionRepository {
     id: string,
   ): Promise<{ metadataJson: string } | null> {
     return this.d1
-      .prepare("SELECT metadata_json AS metadataJson FROM lead_event WHERE id = ? LIMIT 1")
+      .prepare("SELECT metadata_json AS \"metadataJson\" FROM lead_event WHERE id = ? LIMIT 1")
       .bind(id)
       .first<{ metadataJson: string }>();
   }

@@ -121,12 +121,12 @@ export class D1AdminRepository {
     const result = await this.d1
       .prepare(
         `SELECT
-          (SELECT count(*) FROM vehicle WHERE status = 'AVAILABLE') AS vehiclesAvailable,
-          (SELECT count(*) FROM vehicle WHERE status = 'DRAFT') AS vehiclesDraft,
-          (SELECT count(*) FROM lead WHERE status = 'NEW') AS leadsNew,
-          (SELECT count(*) FROM appraisal WHERE status IN ('SUBMITTED', 'IN_REVIEW')) AS appraisalsPending,
-          (SELECT count(*) FROM finance_plan_version WHERE status = 'DRAFT') AS financeDrafts,
-          (SELECT count(*) FROM promotion WHERE status = 'SCHEDULED') AS promotionsScheduled`,
+          (SELECT count(*) FROM vehicle WHERE status = 'AVAILABLE') AS "vehiclesAvailable",
+          (SELECT count(*) FROM vehicle WHERE status = 'DRAFT') AS "vehiclesDraft",
+          (SELECT count(*) FROM lead WHERE status = 'NEW') AS "leadsNew",
+          (SELECT count(*) FROM appraisal WHERE status IN ('SUBMITTED', 'IN_REVIEW')) AS "appraisalsPending",
+          (SELECT count(*) FROM finance_plan_version WHERE status = 'DRAFT') AS "financeDrafts",
+          (SELECT count(*) FROM promotion WHERE status = 'SCHEDULED') AS "promotionsScheduled"`,
       )
       .first<Record<keyof AdminOverview, number>>();
     return {
@@ -634,7 +634,7 @@ export class D1AdminRepository {
     versionColumn: "version" | "lock_version" = "version",
   ): Promise<MutationResult<never>> {
     const row = await this.d1.prepare(
-      `SELECT ${versionColumn} AS currentVersion FROM ${table} WHERE id = ?`,
+      `SELECT ${versionColumn} AS "currentVersion" FROM ${table} WHERE id = ?`,
     ).bind(id).first<{ currentVersion: number }>();
     if (!row) return { ok: false, reason: "not_found" };
     return { ok: false, reason: "conflict", currentVersion: Number(row.currentVersion ?? expectedVersion) };

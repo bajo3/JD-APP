@@ -95,7 +95,7 @@ export class D1ConsignmentIntakeRepository {
 
   async findLeadRequestHash(idempotencyKey: string): Promise<string | null> {
     const row = await this.d1
-      .prepare("SELECT create_request_hash AS requestHash FROM lead WHERE idempotency_key = ? LIMIT 1")
+      .prepare("SELECT create_request_hash AS \"requestHash\" FROM lead WHERE idempotency_key = ? LIMIT 1")
       .bind(idempotencyKey)
       .first<{ requestHash: string }>();
     return row ? String(row.requestHash) : null;

@@ -73,10 +73,10 @@ type UploadContext = Readonly<{
 type IdempotencyRow = { requestHash: string; resourceId: string };
 
 const MEDIA_SELECT = `SELECT
-  id, consignment_id AS consignmentId, r2_key AS r2Key, content_type AS contentType,
-  byte_size AS byteSize, sha256, capture_type AS captureType, status,
-  request_hash AS requestHash, sort_order AS sortOrder, version,
-  uploaded_at AS uploadedAt, updated_at AS updatedAt, created_at AS createdAt
+  id, consignment_id AS "consignmentId", r2_key AS "r2Key", content_type AS "contentType",
+  byte_size AS "byteSize", sha256, capture_type AS "captureType", status,
+  request_hash AS "requestHash", sort_order AS "sortOrder", version,
+  uploaded_at AS "uploadedAt", updated_at AS "updatedAt", created_at AS "createdAt"
 FROM consignment_media`;
 
 function changes(result: D1Result<unknown> | undefined): number {
@@ -109,7 +109,7 @@ export class D1ConsignmentMediaRepository {
     publicCode: string,
   ): Promise<{ id: string; status: string; uploadTokenHash: string | null } | null> {
     const row = await this.d1
-      .prepare("SELECT id, status, upload_token_hash AS uploadTokenHash FROM consignment WHERE public_code = ? LIMIT 1")
+      .prepare("SELECT id, status, upload_token_hash AS \"uploadTokenHash\" FROM consignment WHERE public_code = ? LIMIT 1")
       .bind(publicCode)
       .first<{ id: string; status: string; uploadTokenHash: string | null }>();
     return row
@@ -170,7 +170,7 @@ export class D1ConsignmentMediaRepository {
   ): Promise<"conflict" | ConsignmentMediaRecord | null> {
     const replay = await this.d1
       .prepare(
-        `SELECT request_hash AS requestHash, resource_id AS resourceId
+        `SELECT request_hash AS "requestHash", resource_id AS "resourceId"
          FROM admin_idempotency
          WHERE scope = 'consignment_media.upload' AND idempotency_key = ? LIMIT 1`,
       )
