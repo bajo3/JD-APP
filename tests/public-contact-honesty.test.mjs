@@ -74,7 +74,7 @@ test("the business WhatsApp number stays retired until JDA confirms it", async (
   assert.match(fixtures, /whatsappE164: null/);
   assert.doesNotMatch(fixtures, /whatsappE164: "\+549/);
 
-  const retirement = await read("drizzle/0009_retire_unconfirmed_whatsapp.sql");
+  const retirement = await read("drizzle-sqlite-archive/0009_retire_unconfirmed_whatsapp.sql");
   assert.match(retirement, /`whatsapp_e164` = NULL/);
   assert.match(retirement, /'\+5492494587046'/);
 });

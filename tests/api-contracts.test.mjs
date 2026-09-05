@@ -12,7 +12,7 @@ import {
   isConfirmedWhatsappNumber,
   isPromotionCurrent,
 } from "../lib/server/channel-policy.ts";
-import { RemoteD1Error } from "../db/d1-remote.ts";
+import { RemoteSupabaseError } from "../db/supabase-remote.ts";
 import { canUseDevelopmentFixtures } from "../lib/server/runtime-policy.ts";
 
 const clock = new Date("2026-08-16T15:00:00.000Z");
@@ -158,7 +158,7 @@ test("business, appraisal and simulation DTOs preserve stable public contracts",
 
 test("fixtures are allowed for a missing binding in development and forbidden in production", () => {
   const missing = new Error("Cloudflare D1 binding `DB` is unavailable.");
-  const missingRemoteConfiguration = new RemoteD1Error("D1_REMOTE_CONFIG_INVALID");
+  const missingRemoteConfiguration = new RemoteSupabaseError("SUPABASE_REMOTE_CONFIG_INVALID");
   assert.equal(canUseDevelopmentFixtures(missing, "development"), true);
   assert.equal(canUseDevelopmentFixtures(missing, "test"), true);
   assert.equal(canUseDevelopmentFixtures(missing, "production"), false);

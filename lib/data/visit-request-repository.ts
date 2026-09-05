@@ -20,12 +20,13 @@ export class D1VisitRequestRepository {
   }): Promise<boolean> {
     const visit = this.d1
       .prepare(
-        `INSERT OR IGNORE INTO visit_request
+        `INSERT INTO visit_request
            (id, lead_id, conversation_id, vehicle_id, requested_at, status,
             assigned_to, note, created_at, updated_at)
          SELECT ?, lead_id, id, ?, ?, 'REQUESTED', COALESCE(assigned_to, ?), ?, ?, ?
            FROM inbox_conversation
-          WHERE id = ? AND lead_id = ? AND status = 'OPEN'`,
+          WHERE id = ? AND lead_id = ? AND status = 'OPEN'
+         ON CONFLICT DO NOTHING`,
       )
       .bind(
         input.id,

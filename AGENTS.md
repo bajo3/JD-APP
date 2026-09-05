@@ -36,7 +36,11 @@ quede técnicamente cerrada y JDA confirme su operación comercial.
 - La última versión publicada está detrás del código local. No publiques hasta
   integrar y validar el estado completo.
 - Por instrucción confirmada del usuario el 4 de septiembre de 2026, el runtime
-  es Next.js 16 sobre Vercel, con D1 remoto por API y R2 privado por S3.
+  es Next.js 16 sobre Vercel. Ese mismo día, por instrucción posterior del
+  usuario, la base de datos se migró de Cloudflare D1 a Postgres en Supabase
+  (`SUPABASE_DB_URL`, resuelto por `db/index.ts` y `db/supabase-remote.ts`).
+  Las fotos siguen en Cloudflare R2 privado por S3; migrarlas a Supabase
+  Storage queda pendiente (falta configurar las credenciales S3 del bucket).
   GitHub `bajo3/JD-APP`, rama `main`, es la fuente canónica. No usar ni publicar
   ChatGPT Sites. No tocar el proyecto Vercel `meli-app`.
 - Secretos sólo en archivos de entorno ignorados o en Vercel; verificar nombres,
@@ -53,13 +57,14 @@ Preservá y verificá los cuatro invariantes de consignación ya implementados:
 2. hacer atómica e idempotente la creación de lead, consentimiento y
    consignación, con claves estables durante reintentos;
 3. implementar un ciclo recuperable `PENDING → READY | FAILED → ARCHIVED` para
-   fotos D1/R2, sin éxitos falsos ni objetos accesibles incompletos;
+   fotos en Supabase/R2, sin éxitos falsos ni objetos accesibles incompletos;
 4. corregir la migración 0008 y su snapshot para que `npm run db:generate` no
    produzca una migración duplicada.
 
-La evidencia histórica con Wrangler está en `PUERTAS_DE_SALIDA.md`. La migración
-de hosting exige volver a probar el recorrido con Next y D1/R2 remotos antes
-de publicar; las pruebas históricas no certifican el nuevo runtime.
+La evidencia histórica con Wrangler y D1 está en `PUERTAS_DE_SALIDA.md`: es
+anterior a la migración a Vercel + Supabase y no certifica el runtime actual.
+Cualquier recorrido nuevo debe probarse contra Next en Vercel, Postgres en
+Supabase y R2 remotos antes de publicar.
 
 ## Forma de trabajar
 
@@ -72,8 +77,8 @@ de publicar; las pruebas históricas no certifican el nuevo runtime.
 4. Cerrá una vertical completa por vez: contrato → persistencia → API → UI →
    pruebas → runtime real afectado → commit.
 5. Usá `apply_patch` para editar archivos. No hagas reescrituras destructivas.
-6. Si encontrás una contradicción, resolvela con evidencia del código, D1, Vercel
-   o una decisión confirmada. No elijas silenciosamente la respuesta cómoda.
+6. Si encontrás una contradicción, resolvela con evidencia del código, Supabase,
+   Vercel o una decisión confirmada. No elijas silenciosamente la respuesta cómoda.
 7. Si falta un dato de JDA, avanzá hasta la frontera segura, registrá una
    pregunta concreta en `DECISIONES_JDA.md` y mantené la función deshabilitada o
    marcada como DEMO.
@@ -95,7 +100,7 @@ Usá Sol para:
 - dinero y reglas comerciales;
 - esquema, migraciones y repositorios;
 - transacciones, idempotencia y concurrencia;
-- D1/R2, compensación y reconciliación;
+- Supabase/R2, compensación y reconciliación;
 - rate limiting, auditoría, backup y restauración;
 - pruebas de integración y Worker real.
 
@@ -151,13 +156,15 @@ revisa después la implementación de Luna. No se cambian esas reglas sin revisi
 - Autorizá antes de leer PII, metadata privada o bytes.
 - No registres PII, tokens, cuerpos, fotos, command hashes ni claves de
   idempotencia en logs.
-- Aplicá límites de abuso en la plataforma, no contadores en memoria del Worker.
+- Aplicá límites de abuso en la plataforma, no contadores en memoria de la
+  función serverless.
 
-### D1 y R2
+### Supabase y R2
 
-- D1 es la fuente de verdad de metadata y estados; R2 almacena bytes.
-- D1 y R2 no son una transacción: modelá estados explícitos, reintentos y
-  compensación.
+- Supabase (Postgres) es la fuente de verdad de metadata y estados; R2
+  almacena bytes.
+- Supabase y R2 no son una transacción: modelá estados explícitos, reintentos
+  y compensación.
 - Sólo media `READY` se lista o entrega.
 - Nunca hagas borrado físico de datos comerciales desde el panel.
 - Cada cambio sensible requiere actor, auditoría, control de versión y estado
@@ -184,10 +191,12 @@ Antes de cerrar una vertical, ejecutá pruebas proporcionales al riesgo:
 - unitarias de dominio/contrato;
 - API con errores, replay y conflictos;
 - SQL real con constraints y foreign keys;
-- fallas inyectadas entre D1 y R2;
+- fallas inyectadas entre Supabase y R2;
 - autorización fail-closed;
 - UI con éxito, error, carga y reintento;
-- Wrangler con D1/R2 reales cuando haya persistencia o uploads.
+- Supabase y R2 reales cuando haya persistencia o uploads (ver
+  `tests/supabase-remote.test.mjs` y `tests/e2e-commercial-journey.test.mjs`,
+  que requieren `SUPABASE_DB_URL` y se omiten solas si falta).
 
 Después ejecutá la validación global:
 
@@ -212,7 +221,7 @@ No publiques una versión nueva hasta demostrar:
 - migraciones completas y repetibles;
 - backup y restore drill del esquema completo;
 - pruebas globales verdes sin errores ocultos;
-- recorrido comercial en Next/Vercel con D1/R2 remotos;
+- recorrido comercial en Next/Vercel con Supabase y R2 remotos;
 - fotos privadas inaccesibles públicamente;
 - entorno Vercel con valores confirmados para Preview y Production;
 - ausencia de errores nuevos en logs;

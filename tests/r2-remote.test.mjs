@@ -1,9 +1,26 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier.startsWith("@/")) {
+      const relative = specifier.slice(2);
+      return {
+        url: pathToFileURL(resolve(
+          projectRoot,
+          specifier === "@/db"
+            ? "db/index.ts"
+            : specifier === "@/lib/admin"
+              ? "lib/admin/index.ts"
+              : relative.endsWith(".mjs") ? relative : `${relative}.ts`,
+        )).href,
+        shortCircuit: true,
+      };
+    }
     if ((specifier.startsWith("./") || specifier.startsWith("../")) && !/\.[cm]?[jt]s$/.test(specifier)) {
       return nextResolve(`${specifier}.ts`, context);
     }

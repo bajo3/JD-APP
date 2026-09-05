@@ -54,7 +54,11 @@ const AT = new Date("2026-08-21T12:00:00.000Z");
 function sqliteD1(database) {
   function statement(sql, bindings = []) {
     return {
-      bind(...values) { return statement(sql, values); },
+      bind(...values) {
+        // node:sqlite no acepta un booleano nativo como bind: D1 real y el shim de
+        // Postgres sí lo hacen, así que la base de pruebas en SQLite lo traduce acá.
+        return statement(sql, values.map((v) => (typeof v === "boolean" ? (v ? 1 : 0) : v)));
+      },
       async first() { return database.prepare(sql).get(...bindings) ?? null; },
       async all() {
         return { results: database.prepare(sql).all(...bindings), success: true, meta: {} };
@@ -85,7 +89,7 @@ function sqliteD1(database) {
 function rateDatabase() {
   const database = new DatabaseSync(":memory:");
   for (const path of [
-    "drizzle/0010_rate_limit_windows.sql",
+    "drizzle-sqlite-archive/0010_rate_limit_windows.sql",
   ]) {
     database.exec(readFileSync(path, "utf8").replaceAll("--> statement-breakpoint", ""));
   }
@@ -256,11 +260,15 @@ test("en Vercel normaliza representaciones IPv6 equivalentes para el cupo", asyn
     method: "POST",
     headers: { "x-vercel-forwarded-for": ip },
   });
+  // Las dos primeras son la misma dirección IPv6 en dos notaciones (extendida
+  // y comprimida); las dos últimas son la misma dirección IPv4 mapeada a
+  // IPv6, también en dos notaciones. Son dos clientes distintos, así que dos
+  // cupos: la normalización no debe colapsarlos en uno solo compartido.
   await enforceRateLimit(requestWithVercelIp("2001:0DB8:0:0:0:0:0:1"), "public.lead", runtime);
   await enforceRateLimit(requestWithVercelIp("2001:db8::1"), "public.lead", runtime);
   await enforceRateLimit(requestWithVercelIp("::ffff:192.0.2.1"), "public.lead", runtime);
   await enforceRateLimit(requestWithVercelIp("0:0:0:0:0:ffff:c000:201"), "public.lead", runtime);
-  assert.equal(backend.rows.size, 1);
+  assert.equal(backend.rows.size, 2);
 });
 
 test("withRateLimit responde 503 sin llamar al handler cuando falta identidad Vercel", async () => {

@@ -258,3 +258,47 @@ lead con contexto y replay, handoff que responde `WHATSAPP_NOT_CONFIGURED`
 sin número confirmado, panel y media fallando cerrado sin sesión, y el limitador
 respondiendo 429 con `Retry-After` y contadores persistidos en D1 que sobreviven
 reinicios del Worker.
+
+## Migración de persistencia a Supabase — 4 de septiembre de 2026
+
+Por instrucción del usuario, la base de datos se migró de Cloudflare D1
+(SQLite) a Postgres en Supabase; el object storage sigue en Cloudflare R2
+(compatible S3) hasta que se complete su propia migración a Supabase Storage,
+todavía pendiente por falta de credenciales.
+
+Alcance de esta migración:
+
+- esquema completo (36 tablas) reescrito de `drizzle-orm/sqlite-core` a
+  `drizzle-orm/pg-core`, con dos correcciones de fondo encontradas en el
+  camino: 23 columnas de importes en centavos que en SQLite tenían afinidad
+  flexible pasaron a `bigint` (`integer` de Postgres se queda corto, sólo 32
+  bits, con montos en pesos con inflación) y el driver `postgres.js` se
+  configuró para devolver esos `bigint` como `number`, no como texto;
+- `db/supabase-remote.ts` reemplaza a `db/d1-remote.ts`: mismo contrato
+  `D1Database` (`prepare/bind/first/all/run/batch/exec`) que ya consumían los
+  doce repositorios de `lib/data/*.ts`, así que ese código de negocio no se
+  reescribió; sólo se tradujeron los `?` a `$1, $2, ...` y `changes()` de
+  SQLite (sin equivalente en Postgres) por el conteo real de la sentencia
+  anterior dentro de la misma transacción;
+- `INSERT OR IGNORE`, `json_extract()` y `rowid` (los tres sin equivalente
+  directo en Postgres) se corrigieron caso por caso en `lib/data/*.ts` y
+  `lib/server/funnel-data.ts`;
+- las diecisiete migraciones SQLite se archivaron en `drizzle-sqlite-archive/`
+  (no se borró evidencia) y se generó una migración inicial de Postgres
+  consolidada, aplicada contra la Supabase real;
+- suite completa verde (423 pruebas, 8 omitidas por diseño sin
+  `SUPABASE_DB_URL`), lint y `tsc --noEmit` limpios, `db:generate` sin
+  diferencias contra el esquema vigente;
+- `scripts/seed-demo-d1.mjs`, `scripts/d1-migrate.mjs` y
+  `scripts/d1-backup.mjs` reescritos contra Postgres nativo (sin Wrangler): el
+  ensayo de restauración crea y descarta su propio esquema de Postgres
+  (nunca toca `public`) y comparó los conteos de las 36 tablas correctamente
+  contra la Supabase real; `scripts/stock-sync.mjs` también se adaptó a la
+  base nueva, aunque no se pudo ensayar de punta a punta por depender del
+  entorno del proyecto hermano JD-Auto.
+
+Pendiente y con efecto real sobre el catálogo: el stock de JD-Auto sincronizado
+el 3 de septiembre (10 unidades) quedó en la D1 vieja y no se trasladó solo a
+Supabase — hoy la base tiene sólo el catálogo DEMO. Hace falta correr
+`npm run stock:sync -- --confirm-remote` de nuevo antes de considerar el
+catálogo real publicado (ver fila 1 de `DECISIONES_JDA.md`).

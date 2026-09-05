@@ -98,13 +98,14 @@ export class D1DemandRepository {
   }): Promise<void> {
     await this.d1
       .prepare(
-        `INSERT OR IGNORE INTO buyer_passport
+        `INSERT INTO buyer_passport
            (id, lead_id, conversation_id, review_token_hash, status, budget_cents, down_payment_cents,
             max_monthly_payment_cents, currency, desired_makes_json, desired_models_json,
             accepted_types_json, min_year, max_mileage_km, primary_use, needs_financing,
             trade_in_description, urgency_days, locality, max_distance_km,
             mandatory_conditions_json, negotiable_conditions_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING`,
       )
       .bind(
         input.id,
@@ -121,7 +122,7 @@ export class D1DemandRepository {
         input.minYear,
         input.maxMileageKm,
         input.primaryUse,
-        input.needsFinancing === null ? null : input.needsFinancing ? 1 : 0,
+        input.needsFinancing === null ? null : input.needsFinancing,
         input.tradeInDescription,
         input.urgencyDays,
         input.locality,

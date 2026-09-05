@@ -72,7 +72,11 @@ const SIMULATION_CODE = "JD-CONTEXT1";
 function sqliteD1(database) {
   function statement(sql, bindings = []) {
     return {
-      bind(...values) { return statement(sql, values); },
+      bind(...values) {
+        // node:sqlite no acepta un booleano nativo como bind: D1 real y el shim de
+        // Postgres sí lo hacen, así que la base de pruebas en SQLite lo traduce acá.
+        return statement(sql, values.map((v) => (typeof v === "boolean" ? (v ? 1 : 0) : v)));
+      },
       async first() { return database.prepare(sql).get(...bindings) ?? null; },
       async all() {
         return { results: database.prepare(sql).all(...bindings), success: true, meta: {} };
@@ -112,7 +116,7 @@ function databaseFixture() {
     "0005_lucky_exiles.sql",
     "0006_nostalgic_scarlet_spider.sql",
   ]) {
-    database.exec(readFileSync(resolve(projectRoot, "drizzle", file), "utf8")
+    database.exec(readFileSync(resolve(projectRoot, "drizzle-sqlite-archive", file), "utf8")
       .replaceAll("--> statement-breakpoint", ""));
   }
   database.prepare(

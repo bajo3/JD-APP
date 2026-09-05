@@ -59,7 +59,7 @@ export async function getConversionFunnel(runtime: FunnelRuntime = {}): Promise<
       .from(leadEvents)
       .where(and(
         eq(leadEvents.type, "STATUS_CHANGED"),
-        sql`json_extract(${leadEvents.metadataJson}, '$.to') in (${sql.join(CONTACTED_STATUSES.map((status) => sql`${status}`), sql`, `)})`,
+        sql`(${leadEvents.metadataJson}::jsonb ->> 'to') in (${sql.join(CONTACTED_STATUSES.map((status) => sql`${status}`), sql`, `)})`,
         gte(leadEvents.occurredAt, sinceIso),
         lt(leadEvents.occurredAt, untilIso),
       )),
@@ -68,7 +68,7 @@ export async function getConversionFunnel(runtime: FunnelRuntime = {}): Promise<
       .from(leadEvents)
       .where(and(
         eq(leadEvents.type, "STATUS_CHANGED"),
-        sql`json_extract(${leadEvents.metadataJson}, '$.to') = 'WON'`,
+        sql`(${leadEvents.metadataJson}::jsonb ->> 'to') = 'WON'`,
         gte(leadEvents.occurredAt, sinceIso),
         lt(leadEvents.occurredAt, untilIso),
       )),
@@ -116,7 +116,7 @@ function channelDimension() {
 
 function vehicleDimension() {
   return sql<string>`coalesce(
-    (select trim(v.make || ' ' || v.model || ' ' || coalesce(v.trim, '') || ' ' || v.year)
+    (select trim(v.make || ' ' || v.model || ' ' || coalesce(v.trim, '') || ' ' || v.year::text)
        from ${leadInterests} li
        join ${vehicles} v on v.id = li.vehicle_id
       where li.lead_id = ${outerLeadId} and li.vehicle_id is not null
@@ -138,14 +138,14 @@ function breakdownQuery(
     select 1 from ${leadEvents} e
      where e.lead_id = ${outerLeadId}
        and e.type = 'STATUS_CHANGED'
-       and json_extract(e.metadata_json, '$.to') in ('CONTACTED', 'QUALIFIED', 'WON')
+       and (e.metadata_json::jsonb ->> 'to') in ('CONTACTED', 'QUALIFIED', 'WON')
        and e.occurred_at < ${untilIso}
   ) then 1 else 0 end)`;
   const won = sql<number>`sum(case when exists (
     select 1 from ${leadEvents} e
      where e.lead_id = ${outerLeadId}
        and e.type = 'STATUS_CHANGED'
-       and json_extract(e.metadata_json, '$.to') = 'WON'
+       and (e.metadata_json::jsonb ->> 'to') = 'WON'
        and e.occurred_at < ${untilIso}
   ) then 1 else 0 end)`;
   return db

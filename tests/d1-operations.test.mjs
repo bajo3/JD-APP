@@ -4,73 +4,42 @@ import test from "node:test";
 import {
   DRILL_TABLES,
   compareCounts,
-  normalizeDump,
+  dumpTableRows,
   parseArgs as parseBackupArgs,
-  parseCounts,
   readSchemaTables,
-  splitStatements,
+  topologicalTableOrder,
 } from "../scripts/d1-backup.mjs";
-import {
-  parseAppliedIds,
-  parseArgs as parseMigrateArgs,
-  pendingMigrations,
-} from "../scripts/d1-migrate.mjs";
-
-const LF = String.fromCharCode(10);
+import { parseArgs as parseMigrateArgs, pendingMigrations } from "../scripts/d1-migrate.mjs";
 
 test("destructive database operations demand an explicit flag", () => {
-  assert.throws(() => parseBackupArgs(["--remote"]), /--confirm-remote/);
   assert.throws(() => parseBackupArgs(["--restore", "dump.sql"]), /--confirm-restore/);
   assert.throws(() => parseBackupArgs(["--restore"]), /needs the path/);
   assert.throws(() => parseMigrateArgs(["--remote"]), /--confirm-remote/);
-  assert.throws(() => parseBackupArgs(["--database", "DB; DROP TABLE lead"]), /Invalid D1/);
 
   const safe = parseBackupArgs(["--drill"]);
-  assert.equal(safe.remote, false);
   assert.equal(safe.restore, null);
   assert.equal(safe.drill, true);
+
+  // Un volcado o un ensayo son de lectura (o tocan sólo un esquema propio y
+  // descartable), así que no piden confirmación: sólo restaurar la pisa.
+  const restore = parseBackupArgs(["--restore", "dump.sql", "--confirm-restore"]);
+  assert.equal(restore.restore, "dump.sql");
 });
 
-test("a dump is reordered so every row lands after its table exists", () => {
-  const dump = [
-    "PRAGMA defer_foreign_keys=TRUE;",
-    "CREATE TABLE `appraisal_media` (",
-    "\t`id` text PRIMARY KEY NOT NULL,",
-    "\tFOREIGN KEY (`appraisal_id`) REFERENCES `appraisal`(`id`)",
-    ");",
-    "INSERT INTO \"appraisal_media\" VALUES('a','b');",
-    "CREATE TABLE `appraisal` (",
-    "\t`id` text PRIMARY KEY NOT NULL",
-    ");",
-    "INSERT INTO \"appraisal\" VALUES('b');",
-    "CREATE UNIQUE INDEX `uq_media` ON `appraisal_media` (`id`);",
-  ].join(LF);
-
-  const statements = splitStatements(normalizeDump(dump));
-  const kind = statements.map((statement) =>
-    statement.startsWith("PRAGMA")
-      ? "pragma"
-      : statement.startsWith("CREATE UNIQUE INDEX")
-        ? "index"
-        : statement.startsWith("CREATE TABLE")
-          ? "table"
-          : "insert",
-  );
-  assert.deepEqual(kind, ["pragma", "table", "table", "insert", "insert", "index"]);
-  assert.equal(statements.length, 6);
+test("un volcado sin filas no genera ninguna sentencia", () => {
+  assert.equal(dumpTableRows("vehicle", []), "");
 });
 
-test("statement splitting survives semicolons and newlines inside values", () => {
-  const dump = [
-    "INSERT INTO \"lead\" VALUES('uno; dos',",
-    "'tres');",
-    "INSERT INTO \"lead\" VALUES('it''s fine; really');",
-  ].join(LF);
-
-  const statements = splitStatements(dump);
-  assert.equal(statements.length, 2);
-  assert.match(statements[0], /uno; dos/);
-  assert.match(statements[1], /it''s fine; really/);
+test("un volcado escapa comillas, respeta null y conserva el orden de columnas", () => {
+  const sql = dumpTableRows("lead", [
+    { id: "lead-1", name: "O'Higgins", notes: null, priceCents: 1234, active: true },
+  ]);
+  assert.match(sql, /^INSERT INTO "lead" \("id", "name", "notes", "priceCents", "active"\) VALUES/);
+  assert.match(sql, /'O''Higgins'/);
+  assert.match(sql, /NULL/);
+  assert.match(sql, /1234/);
+  assert.match(sql, /TRUE/);
+  assert.ok(sql.trim().endsWith(";"));
 });
 
 test("restore drill compares the tables that carry the operation", () => {
@@ -106,15 +75,21 @@ test("el ensayo compara el esquema completo y no una lista escrita a mano", () =
   }
 });
 
-test("wrangler JSON output is read defensively", () => {
-  const counts = parseCounts('noise\n[{"results":[{"vehicle":4,"lead":0}],"success":true}]');
-  assert.deepEqual(counts, { vehicle: 4, lead: 0 });
-  assert.deepEqual(parseCounts("not json at all"), {});
-  assert.deepEqual(parseCounts("[broken"), {});
+test("el orden de volcado nunca inserta una fila antes que la que referencia", () => {
+  const order = topologicalTableOrder();
+  assert.deepEqual([...order].sort(), [...DRILL_TABLES].sort());
 
-  const ids = parseAppliedIds('[{"results":[{"id":"0001_a"},{"id":"0002_b"}],"success":true}]');
-  assert.deepEqual(ids, ["0001_a", "0002_b"]);
-  assert.deepEqual(parseAppliedIds(""), []);
+  const position = new Map(order.map((table, index) => [table, index]));
+  // lead_interest depende de lead, vehicle, appraisal, simulation y promotion:
+  // todas tienen que quedar antes en el orden de inserción.
+  for (const dependency of ["lead", "vehicle", "appraisal", "simulation", "promotion"]) {
+    assert.ok(
+      position.get(dependency) < position.get("lead_interest"),
+      `${dependency} debería insertarse antes que lead_interest`,
+    );
+  }
+  assert.ok(position.get("vehicle") < position.get("vehicle_price_history"));
+  assert.ok(position.get("appraisal") < position.get("appraisal_media"));
 });
 
 test("only unapplied migrations run, and a baseline marks the older ones", () => {

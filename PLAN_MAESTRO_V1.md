@@ -116,7 +116,7 @@ flowchart TB
     N --> APP["Casos de uso"]
     API --> APP
     APP --> DOM["Dominio puro y motor determinista"]
-    APP --> DB["Cloudflare D1"]
+    APP --> DB["Postgres (Supabase)"]
     APP --> STORE["Cloudflare R2"]
     APP --> PORTS["Adaptadores: stock, CRM, WhatsApp, push y analítica"]
 ```
@@ -125,11 +125,14 @@ Decisiones:
 
 - Next.js App Router y TypeScript estricto para web, panel y API.
 - Node.js como runtime del servidor.
-- Cloudflare D1 como fuente de verdad interna para la V1.
-- Cloudflare R2 como almacenamiento de imágenes y archivos.
+- Postgres en Supabase como fuente de verdad interna para la V1 (migrado desde
+  Cloudflare D1 el 4 de septiembre de 2026, por decisión del usuario).
+- Cloudflare R2 como almacenamiento de imágenes y archivos; su propia
+  migración a Supabase Storage queda pendiente.
 - GitHub `bajo3/JD-APP` → Vercel como único flujo de publicación; Next.js 16
-  usa D1 por API remota y R2 privado por S3. Sites/Vinext fueron retirados del
-  runtime por decisión del usuario; las puertas están en `MIGRACION_VERCEL.md`.
+  usa Supabase por conexión Postgres directa y R2 privado por S3. Sites/Vinext
+  fueron retirados del runtime por decisión del usuario; las puertas están en
+  `MIGRACION_VERCEL.md`.
 - Tailwind CSS y componentes accesibles para la interfaz.
 - Zod para contratos y validación compartida.
 - Drizzle ORM y migraciones SQL explícitas.
@@ -495,7 +498,7 @@ POST   /api/v1/whatsapp/handoffs
 ```
 
 Las mutaciones públicas pasan por el limitador de abuso por IP y ventana fija
-persistido en D1, que responde 429 estable con `Retry-After`. La consignación
+persistido en Supabase, que responde 429 estable con `Retry-After`. La consignación
 V1.1 agrega `POST /api/v1/consignments` y `POST /api/v1/consignments/{code}/photos`,
 sin navegación pública.
 
@@ -701,7 +704,7 @@ Objetivos iniciales:
 - Reintentos de outbox y webhooks duplicados.
 - Cambio de precio antes del contacto.
 - Dos sesiones sobre la misma unidad.
-- Constraints, concurrencia y transacciones con D1 real.
+- Constraints, concurrencia y transacciones con Supabase real.
 - Autorización, rate limiting y ausencia de datos personales en logs.
 
 ### UI y recorridos — Luna Go
@@ -940,6 +943,6 @@ La app podrá agregar después notificaciones nativas, cámara guiada, JD Scan, 
 - [Next.js — Backend for Frontend](https://nextjs.org/docs/app/guides/backend-for-frontend)
 - [Next.js — App Router](https://nextjs.org/docs/app/getting-started)
 - [Expo — Monorepos](https://docs.expo.dev/guides/monorepos/)
-- [Cloudflare D1](https://developers.cloudflare.com/d1/)
+- [Supabase](https://supabase.com/docs)
+- [postgres.js](https://github.com/porsager/postgres)
 - [Cloudflare R2](https://developers.cloudflare.com/r2/)
-- [Cloudflare Workers](https://developers.cloudflare.com/workers/)

@@ -1,7 +1,10 @@
 export function isMissingD1BindingError(error: unknown): boolean {
   return error instanceof Error && (
     error.message.includes("D1 binding `DB` is unavailable") ||
-    ("code" in error && error.code === "D1_REMOTE_CONFIG_INVALID")
+    (
+      "code" in error &&
+      (error.code === "D1_REMOTE_CONFIG_INVALID" || error.code === "SUPABASE_REMOTE_CONFIG_INVALID")
+    )
   );
 }
 

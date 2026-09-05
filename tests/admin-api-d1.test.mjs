@@ -10,10 +10,10 @@ function migration(path) {
 function cleanAdminDatabase() {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys=ON;");
-  db.exec(migration("drizzle/0000_chemical_tiger_shark.sql"));
-  db.exec(migration("drizzle/0001_worried_valkyrie.sql"));
-  db.exec(migration("drizzle/0002_seed_demo_publication.sql"));
-  db.exec(migration("drizzle/0004_furry_ultimatum.sql"));
+  db.exec(migration("drizzle-sqlite-archive/0000_chemical_tiger_shark.sql"));
+  db.exec(migration("drizzle-sqlite-archive/0001_worried_valkyrie.sql"));
+  db.exec(migration("drizzle-sqlite-archive/0002_seed_demo_publication.sql"));
+  db.exec(migration("drizzle-sqlite-archive/0004_furry_ultimatum.sql"));
   return db;
 }
 
@@ -62,7 +62,7 @@ test("idempotency keys are unique per create scope", () => {
 
 test("las referencias de tasación suman control optimista sin reescribir versiones publicadas", () => {
   const db = cleanAdminDatabase();
-  db.exec(migration("drizzle/0016_simple_captain_flint.sql"));
+  db.exec(migration("drizzle-sqlite-archive/0016_simple_captain_flint.sql"));
   const columns = db.prepare("PRAGMA table_info(appraisal_rule_set)").all().map((row) => row.name);
   assert.ok(columns.includes("lock_version"));
   assert.ok(columns.includes("updated_at"));

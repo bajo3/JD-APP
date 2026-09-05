@@ -15,7 +15,6 @@ import {
 import {
   buildDemoSeedSql,
   resolveSeedRuntime,
-  runDemoSeed,
 } from "../scripts/seed-demo-d1.mjs";
 
 const clock = new Date("2026-08-16T15:00:00.000Z");
@@ -27,12 +26,12 @@ function migration(path) {
 test("incremental migration and demo D1 seed are valid and idempotent", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys=ON;");
-  db.exec(migration("drizzle/0000_chemical_tiger_shark.sql"));
-  db.exec(migration("drizzle/0001_worried_valkyrie.sql"));
-  const dataMigration = migration("drizzle/0002_seed_demo_publication.sql");
+  db.exec(migration("drizzle-sqlite-archive/0000_chemical_tiger_shark.sql"));
+  db.exec(migration("drizzle-sqlite-archive/0001_worried_valkyrie.sql"));
+  const dataMigration = migration("drizzle-sqlite-archive/0002_seed_demo_publication.sql");
   db.exec(dataMigration);
   db.exec(dataMigration);
-  const whatsappMigration = migration("drizzle/0003_confirm_jda_whatsapp.sql");
+  const whatsappMigration = migration("drizzle-sqlite-archive/0003_confirm_jda_whatsapp.sql");
   db.exec(whatsappMigration);
   db.exec(whatsappMigration);
   const seed = buildDemoSeedSql(clock);
@@ -66,18 +65,22 @@ test("incremental migration and demo D1 seed are valid and idempotent", () => {
   assert.ok(Date.parse(plan.valid_until) > clock.getTime());
 });
 
-test("local seed targets the built DB binding and preview persistence", () => {
-  const runtime = resolveSeedRuntime([], process.cwd());
-  assert.equal(runtime.database, "DB");
-  assert.match(runtime.configPath.replaceAll("\\", "/"), /dist\/server\/wrangler\.json$/);
-  assert.match(runtime.persistPath.replaceAll("\\", "/"), /\.wrangler\/state$/);
-  assert.equal(runtime.remote, false);
+test("dry-run no exige confirmación: sólo imprime el SQL sin tocar Supabase", () => {
+  const previous = process.env.SUPABASE_DB_URL;
+  delete process.env.SUPABASE_DB_URL;
+  test.after(() => {
+    if (previous !== undefined) process.env.SUPABASE_DB_URL = previous;
+  });
+  assert.throws(
+    () => resolveSeedRuntime(["--dry-run"]),
+    /Falta la variable de entorno SUPABASE_DB_URL/,
+  );
 });
 
-test("remote seed requires an explicit demo confirmation", () => {
+test("sembrar de verdad exige el flag explícito --confirm-demo", () => {
   assert.throws(
-    () => runDemoSeed(["--remote", "--dry-run"]),
-    /requires the explicit --confirm-demo flag/,
+    () => resolveSeedRuntime([]),
+    /requiere el flag explícito --confirm-demo/,
   );
 });
 

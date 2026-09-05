@@ -16,7 +16,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { resolveDataRuntime } from "./data-runtime.mjs";
 
@@ -524,9 +523,9 @@ export function buildSyncSql({
 // ── Ejecución ──────────────────────────────────────────────────────────────
 
 export function parseArgs(argv) {
-  const remote = argv.includes("--remote");
-  if (remote && !argv.includes("--confirm-remote")) {
-    throw new Error("Sincronizar contra producción requiere el flag explícito --confirm-remote.");
+  const dryRun = argv.includes("--dry-run");
+  if (!dryRun && !argv.includes("--confirm-remote")) {
+    throw new Error("Sincronizar contra Supabase requiere el flag explícito --confirm-remote.");
   }
   const flagValue = (flag, fallback) => {
     const index = argv.indexOf(flag);
@@ -537,11 +536,11 @@ export function parseArgs(argv) {
     throw new Error("--photos admite un entero entre 1 y 40.");
   }
   return {
-    remote,
-    dryRun: argv.includes("--dry-run"),
+    remote: true,
+    confirmRemote: true,
+    dryRun,
     skipPhotos: argv.includes("--skip-photos"),
     photoLimit,
-    database: flagValue("--database", "DB"),
     jdAutoDir: flagValue("--jd-auto", process.env.JD_AUTO_DIR ?? null),
   };
 }
@@ -556,8 +555,14 @@ function readDotEnv(path) {
   return env;
 }
 
+function requiredEnvironment(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`La configuración requerida ${name} no está disponible.`);
+  return value;
+}
+
 function resolveRuntime(options, projectRoot) {
-  const dataRuntime = resolveDataRuntime({ ...options, requireR2: true }, projectRoot);
+  const dataRuntime = resolveDataRuntime(options);
 
   const jdAutoDir = resolve(options.jdAutoDir ?? join(projectRoot, "..", "JD-Auto"));
   const env = readDotEnv(join(jdAutoDir, ".env"));
@@ -580,89 +585,39 @@ function resolveRuntime(options, projectRoot) {
     supabaseUrl,
     supabaseKey,
     sheetUrl,
+    // La misma cuenta de object storage que sirve las fotos publicadas
+    // (lib/data/storage.ts): no hay un almacenamiento "local" propio de este
+    // script, así que la sincronización siempre escribe ahí.
+    bucket: requiredEnvironment("CLOUDFLARE_R2_BUCKET"),
+    r2Config: {
+      endpoint: requiredEnvironment("CLOUDFLARE_R2_ENDPOINT"),
+      accessKeyId: requiredEnvironment("CLOUDFLARE_R2_ACCESS_KEY_ID"),
+      secretAccessKey: requiredEnvironment("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+    },
   };
 }
 
-function d1Execute(runtime, extra, capture = false) {
-  const args = [
-    "d1",
-    "execute",
-    runtime.database,
-    runtime.remote ? "--remote" : "--local",
-    "--config",
-    runtime.configPath,
-    "--yes",
-    ...extra,
-  ];
-  if (!runtime.remote) args.push("--persist-to", runtime.persistPath);
-  const result = spawnSync(process.execPath, [runtime.wrangler, ...args], {
-    cwd: runtime.projectRoot,
-    encoding: "utf8",
-    env: runtime.wranglerEnv,
-    stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`wrangler d1 execute terminó con estado ${result.status}`);
-  return capture ? result.stdout : "";
-}
-
-function parseRows(stdout) {
-  const start = stdout.indexOf("[");
-  if (start < 0) return [];
-  try {
-    const payload = JSON.parse(stdout.slice(start));
-    return Array.isArray(payload) ? (payload[0]?.results ?? []) : [];
-  } catch {
-    return [];
-  }
-}
-
 async function r2Put(runtime, key, file, contentType) {
-  if (runtime.remote) {
-    runtime.r2Client ??= new S3Client({
-      region: "auto",
-      endpoint: runtime.r2Config.endpoint,
-      credentials: {
-        accessKeyId: runtime.r2Config.accessKeyId,
-        secretAccessKey: runtime.r2Config.secretAccessKey,
-      },
-    });
-    try {
-      await runtime.r2Client.send(
-        new PutObjectCommand({
-          Bucket: runtime.bucket,
-          Key: key,
-          Body: readFileSync(file),
-          ContentType: contentType,
-        }),
-      );
-    } catch {
-      throw new Error("No se pudo escribir la foto en R2 remoto.");
-    }
-    return;
-  }
-  const args = [
-    "r2",
-    "object",
-    "put",
-    `${runtime.bucket}/${key}`,
-    "--file",
-    file,
-    "--content-type",
-    contentType,
-    "--config",
-    runtime.configPath,
-  ];
-  if (runtime.remote) args.push("--remote");
-  else args.push("--local", "--persist-to", runtime.persistPath);
-  const result = spawnSync(process.execPath, [runtime.wrangler, ...args], {
-    cwd: runtime.projectRoot,
-    encoding: "utf8",
-    env: runtime.wranglerEnv,
-    stdio: ["ignore", "ignore", "inherit"],
+  runtime.r2Client ??= new S3Client({
+    region: "auto",
+    endpoint: runtime.r2Config.endpoint,
+    credentials: {
+      accessKeyId: runtime.r2Config.accessKeyId,
+      secretAccessKey: runtime.r2Config.secretAccessKey,
+    },
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`wrangler r2 object put terminó con estado ${result.status}`);
+  try {
+    await runtime.r2Client.send(
+      new PutObjectCommand({
+        Bucket: runtime.bucket,
+        Key: key,
+        Body: readFileSync(file),
+        ContentType: contentType,
+      }),
+    );
+  } catch {
+    throw new Error("No se pudo escribir la foto en el object storage.");
+  }
 }
 
 async function fetchSheetUnits(runtime) {
@@ -798,28 +753,16 @@ export async function runStockSync(argv = process.argv.slice(2)) {
       return { accepted, rejected, written: false };
     }
 
-    const existing = parseRows(
-    d1Execute(
-      runtime,
-      [
-        "--json",
-        "--command",
+    const existing = [
+      ...(await runtime.sql.unsafe(
         "SELECT id, external_code, status, price_cents, currency FROM vehicle WHERE source = 'jd-auto'",
-      ],
-      true,
-    ),
-  );
-    const withHashes = parseRows(
-    d1Execute(
-      runtime,
-      [
-        "--json",
-        "--command",
+      )),
+    ];
+    const withHashes = [
+      ...(await runtime.sql.unsafe(
         "SELECT external_id, payload_hash FROM external_stock_mapping WHERE provider = 'jd-auto'",
-      ],
-      true,
-    ),
-  );
+      )),
+    ];
     const hashByCode = new Map(withHashes.map((row) => [row.external_id, row.payload_hash]));
     for (const row of existing) row.sync_hash = hashByCode.get(row.external_code) ?? null;
 
@@ -856,19 +799,15 @@ export async function runStockSync(argv = process.argv.slice(2)) {
     for (const photo of media) {
       await r2Put(runtime, photo.r2Key, photo.file, photo.contentType);
     }
-    const sqlFile = join(tempDir, "stock-sync.sql");
-    writeFileSync(sqlFile, sql, { encoding: "utf8" });
-    d1Execute(runtime, ["--file", sqlFile]);
+    await runtime.d1.exec(sql);
 
-    console.log(
-      `\nCorrida ${runId}: ${changed} unidades con cambios, ${media.length} fotos publicadas en ${runtime.remote ? "producción" : "la base local"}.`,
-    );
+    console.log(`\nCorrida ${runId}: ${changed} unidades con cambios, ${media.length} fotos publicadas.`);
     return { accepted, rejected, media, changed, written: true };
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
   } finally {
-    runtime.cleanup();
+    await runtime.cleanup();
   }
 }
 

@@ -479,7 +479,7 @@ export class D1ChannelInboxRepository {
                 c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
                 (SELECT m.text FROM inbox_message m
                   WHERE m.conversation_id = c.id
-                  ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT 1) AS last_message_text,
+                  ORDER BY m.occurred_at DESC, m.seq DESC LIMIT 1) AS last_message_text,
                 CASE
                   WHEN c.last_inbound_at IS NOT NULL
                    AND (c.last_outbound_at IS NULL OR c.last_outbound_at < c.last_inbound_at)
@@ -548,7 +548,7 @@ export class D1ChannelInboxRepository {
                 c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
                 (SELECT m.text FROM inbox_message m
                   WHERE m.conversation_id = c.id
-                  ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT 1) AS last_message_text
+                  ORDER BY m.occurred_at DESC, m.seq DESC LIMIT 1) AS last_message_text
            FROM inbox_conversation c
            JOIN channel_account a ON a.id = c.channel_account_id
            LEFT JOIN lead l ON l.id = c.lead_id
@@ -861,7 +861,7 @@ export class D1ChannelInboxRepository {
         `SELECT direction, author_type, text, occurred_at
            FROM inbox_message
           WHERE conversation_id = ?
-          ORDER BY occurred_at DESC, rowid DESC
+          ORDER BY occurred_at DESC, seq DESC
           LIMIT ?`,
       )
       .bind(conversationId, Math.max(1, Math.min(limit, 100)))

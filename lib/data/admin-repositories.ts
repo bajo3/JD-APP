@@ -423,7 +423,7 @@ export class D1AdminRepository {
        version = ?, updated_at = ?
        WHERE id = ? AND version = ?`,
     ).bind(input.nextStatus, input.reviewNotes ?? null, input.actor.email,
-      decided ? 1 : 0, input.audit.occurredAt, nextVersion, input.audit.occurredAt,
+      decided, input.audit.occurredAt, nextVersion, input.audit.occurredAt,
       input.id, input.expectedVersion);
     const audit = auditStatement(this.d1, {
       actor: input.actor, audit: input.audit, resourceType: "consignment", resourceId: input.id,
@@ -483,7 +483,7 @@ export class D1AdminRepository {
         input.pricingKind, input.monthlyRateBps ?? null, input.installmentCoefficientPpm ?? null,
         input.maxFinanceRatioBps, input.minimumDownPaymentRatioBps,
         input.allowedVehicleTypesJson, input.maxVehicleAgeYears, input.requiresPromotionId ?? null,
-        input.comfortablePaymentMarginBps ?? 1000, input.isDemo ? 1 : 0, input.disclaimer,
+        input.comfortablePaymentMarginBps ?? 1000, input.isDemo === true, input.disclaimer,
         input.validFrom, input.validUntil, now, now, context.idempotencyKey, context.requestHash, input.id),
       auditStatement(this.d1, {
         actor: context.actor, audit: context.audit, resourceType: "finance_plan_version", resourceId: input.id,
@@ -573,7 +573,7 @@ export class D1AdminRepository {
          ON CONFLICT(id) DO NOTHING`,
       ).bind(input.id, input.slug, input.publicCode, input.title, input.description, input.type,
         input.discountCents ?? 0, input.tradeInBonusCents ?? 0, input.financePlanVersionId ?? null,
-        input.stackable ? 1 : 0, input.normalConditionsSnapshotJson, input.startsAt, input.endsAt,
+        input.stackable === true, input.normalConditionsSnapshotJson, input.startsAt, input.endsAt,
         now, now, context.idempotencyKey, context.requestHash, input.id),
       auditStatement(this.d1, {
         actor: context.actor, audit: context.audit, resourceType: "promotion", resourceId: input.id,
@@ -585,7 +585,7 @@ export class D1AdminRepository {
         `INSERT INTO promotion_vehicle (promotion_id, vehicle_id, is_primary)
          SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM promotion WHERE id = ? AND version = 1)
          ON CONFLICT(promotion_id, vehicle_id) DO NOTHING`,
-      ).bind(input.id, vehicleId, index === 0 ? 1 : 0, input.id));
+      ).bind(input.id, vehicleId, index === 0, input.id));
     }
     await this.d1.batch(statements);
     const winner = await this.findIdempotency("promotion.create", context);

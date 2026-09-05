@@ -522,7 +522,11 @@ test("el listado y los bytes administrativos exigen sesión y sólo entregan REA
 function sqliteD1(database) {
   function statement(sql, bindings = []) {
     return {
-      bind(...values) { return statement(sql, values); },
+      bind(...values) {
+        // node:sqlite no acepta un booleano nativo como bind: D1 real y el shim de
+        // Postgres sí lo hacen, así que la base de pruebas en SQLite lo traduce acá.
+        return statement(sql, values.map((v) => (typeof v === "boolean" ? (v ? 1 : 0) : v)));
+      },
       async first() { return database.prepare(sql).get(...bindings) ?? null; },
       async all() {
         return { results: database.prepare(sql).all(...bindings), success: true, meta: {} };
@@ -554,11 +558,11 @@ function consignmentDatabase() {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON;");
   for (const path of [
-    "drizzle/0000_chemical_tiger_shark.sql",
-    "drizzle/0001_worried_valkyrie.sql",
-    "drizzle/0002_seed_demo_publication.sql",
-    "drizzle/0004_furry_ultimatum.sql",
-    "drizzle/0008_consignment_virtual.sql",
+    "drizzle-sqlite-archive/0000_chemical_tiger_shark.sql",
+    "drizzle-sqlite-archive/0001_worried_valkyrie.sql",
+    "drizzle-sqlite-archive/0002_seed_demo_publication.sql",
+    "drizzle-sqlite-archive/0004_furry_ultimatum.sql",
+    "drizzle-sqlite-archive/0008_consignment_virtual.sql",
   ]) {
     database.exec(readFileSync(path, "utf8").replaceAll("--> statement-breakpoint", ""));
   }
@@ -702,21 +706,21 @@ test("la migración 0008 aplica incrementalmente sobre una base en 0007", () => 
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON;");
   const chain = [
-    "drizzle/0000_chemical_tiger_shark.sql",
-    "drizzle/0001_worried_valkyrie.sql",
-    "drizzle/0002_seed_demo_publication.sql",
-    "drizzle/0003_confirm_jda_whatsapp.sql",
-    "drizzle/0004_furry_ultimatum.sql",
-    "drizzle/0005_lucky_exiles.sql",
-    "drizzle/0006_nostalgic_scarlet_spider.sql",
-    "drizzle/0007_appraisal_media_capture.sql",
+    "drizzle-sqlite-archive/0000_chemical_tiger_shark.sql",
+    "drizzle-sqlite-archive/0001_worried_valkyrie.sql",
+    "drizzle-sqlite-archive/0002_seed_demo_publication.sql",
+    "drizzle-sqlite-archive/0003_confirm_jda_whatsapp.sql",
+    "drizzle-sqlite-archive/0004_furry_ultimatum.sql",
+    "drizzle-sqlite-archive/0005_lucky_exiles.sql",
+    "drizzle-sqlite-archive/0006_nostalgic_scarlet_spider.sql",
+    "drizzle-sqlite-archive/0007_appraisal_media_capture.sql",
   ];
   for (const path of chain) {
     database.exec(readFileSync(path, "utf8").replaceAll("--> statement-breakpoint", ""));
   }
   assert.equal(database.prepare("SELECT name FROM sqlite_master WHERE name = 'consignment'").get(), undefined);
   database.exec(
-    readFileSync("drizzle/0008_consignment_virtual.sql", "utf8").replaceAll("--> statement-breakpoint", ""),
+    readFileSync("drizzle-sqlite-archive/0008_consignment_virtual.sql", "utf8").replaceAll("--> statement-breakpoint", ""),
   );
   const columns = database.prepare("PRAGMA table_info(consignment_media)").all().map((c) => c.name);
   for (const expected of ["status", "request_hash", "version", "updated_at"]) {

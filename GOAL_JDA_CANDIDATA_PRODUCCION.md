@@ -4,10 +4,14 @@
 
 La instrucción vigente del usuario reemplaza las referencias históricas a
 Sites/Vinext: sólo GitHub `bajo3/JD-APP` → Vercel, con `main` canónica,
-Next.js 16, D1 por API remota y R2 privado por S3. No usar ni publicar Sites ni
-tocar `meli-app`. Sol planifica los contratos y revisa; Luna ejecuta los cambios.
-Las puertas operativas vigentes están en `MIGRACION_VERCEL.md`. Las evidencias
-del Worker anterior deben repetirse en el runtime nuevo antes de publicar.
+Next.js 16, Postgres en Supabase y R2 privado por S3. No usar ni publicar Sites
+ni tocar `meli-app`. Sol planifica los contratos y revisa; Luna ejecuta los
+cambios. Las puertas operativas vigentes están en `MIGRACION_VERCEL.md`. Las
+evidencias del Worker anterior deben repetirse en el runtime nuevo antes de
+publicar. Actualización del 4 de septiembre: la base de datos migró de
+Cloudflare D1 a Supabase (ver `PUERTAS_DE_SALIDA.md`); las referencias a
+"Supabase" más abajo (reemplazadas automáticamente desde "D1") describen en
+realidad el estado y los contratos anteriores a esa migración.
 
 ## Objetivo único
 
@@ -47,9 +51,9 @@ Auditoría del 21 de agosto de 2026:
   no una advertencia cosmética.
 - El entorno alojado no tiene variables configuradas: falta, como mínimo,
   resolver `PANEL_ALLOWED_EMAILS` y `NEXT_PUBLIC_SITE_URL` con datos confirmados.
-- La D1 alojada contiene datos demo y un `whatsapp_e164` cargado, mientras la
-  documentación dice que el número aún debe confirmarse. Esa contradicción se
-  debe resolver con JDA; no inferir la respuesta.
+- La base alojada (Supabase) contiene datos demo y un `whatsapp_e164` cargado,
+  mientras la documentación dice que el número aún debe confirmarse. Esa
+  contradicción se debe resolver con JDA; no inferir la respuesta.
 - Siguen pendientes decisiones comerciales: fuente y frescura de stock,
   tarifarios reales, casos dorados, textos legales, cuentas del panel, comisión
   y contrato de consignación.
@@ -66,14 +70,14 @@ registrarla fuera del alcance como backlog; no implementarla.
 
 Asignar a Sol únicamente tareas con invariantes, seguridad o persistencia:
 
-- migraciones y compatibilidad D1;
+- migraciones y compatibilidad Supabase;
 - idempotencia y transacciones;
 - autorización de cargas privadas;
-- ciclo D1/R2 y recuperación ante caídas;
+- ciclo Supabase/R2 y recuperación ante caídas;
 - límites de abuso y rate limiting;
 - contratos API, estados y errores estables;
 - datos reales/demo, snapshots y reglas comerciales;
-- backup, restauración, auditoría y pruebas reales de Worker.
+- backup, restauración, auditoría y pruebas reales contra Supabase/R2.
 
 Sol debe congelar el contrato antes de que la interfaz se adapte. Nunca delegar
 la interpretación de estas instrucciones: el agente principal debe leerlas y
@@ -109,7 +113,7 @@ pasen. Resolver estas brechas antes de commit:
    un token aleatorio de al menos 256 bits, guardar sólo SHA-256 y exigirlo como
    bearer para cada foto. Código inexistente, token incorrecto y registro legacy
    deben responder de forma indistinguible y fail-closed. Nunca poner el token
-   en URL, logs, D1 en claro ni respuestas posteriores.
+   en URL, logs, Supabase en claro ni respuestas posteriores.
 2. **Alta coherente.** Lead, consentimiento y consignación deben crearse como un
    único caso de uso idempotente. Una caída entre requests no puede dejar un
    lead huérfano ni duplicar la oferta. La misma clave y el mismo comando
@@ -117,10 +121,10 @@ pasen. Resolver estas brechas antes de commit:
 3. **Claves estables en cliente.** No generar una idempotency key nueva en cada
    `fetch`. Mantener una clave estable por alta y otra por cada captura durante
    todos los reintentos del mismo intento.
-4. **Ciclo D1/R2 recuperable.** Modelar media como
+4. **Ciclo Supabase/R2 recuperable.** Modelar media como
    `PENDING → READY | FAILED → ARCHIVED`, con versión, request hash y timestamps.
-   Sólo `READY` se lista o entrega. Una caída después de reservar D1, después de
-   escribir R2 o antes de confirmar D1 debe poder reanudarse o compensarse sin
+   Sólo `READY` se lista o entrega. Una caída después de reservar Supabase, después de
+   escribir R2 o antes de confirmar Supabase debe poder reanudarse o compensarse sin
    afirmar éxito falso. Agregar reconciliación para PENDING/FAILED antiguos.
 5. **Finalización real.** El servidor, no sólo la UI, debe exigir exactamente
    las cinco capturas READY antes de permitir `SUBMITTED → IN_REVIEW`.
@@ -144,9 +148,9 @@ pasen. Resolver estas brechas antes de commit:
 Evidencia mínima de fase 1:
 
 - pruebas de token, replay, conflicto, cuota, slots y estados;
-- pruebas de fallos inyectados entre D1/R2 y recuperación;
+- pruebas de fallos inyectados entre Supabase/R2 y recuperación;
 - migración limpia, incremental y repetible;
-- flujo real en Wrangler con D1/R2;
+- flujo real en Supabase y R2 reales;
 - pruebas de autorización administrativa antes de leer PII o bytes;
 - TypeScript, ESLint y build verdes.
 
@@ -181,7 +185,7 @@ Evidencia mínima de fase 1:
 
 1. **Abuso:** aplicar rate limits del entorno a altas públicas, búsqueda,
    simulaciones, leads, handoffs y fotos. Definir límites por IP/ventana y por
-   recurso sin contadores en memoria del Worker. Responder 429 estable.
+   recurso sin contadores en memoria de la función serverless. Responder 429 estable.
 2. **Permisos:** decidir y documentar si V1 usa una única allowlist o roles
    (`ADMIN`, `SELLER`, `APPRAISER`, `MARKETING`). El código, el plan y la UI
    deben coincidir. Toda lectura/mutación sensible autoriza antes de consultar.
@@ -198,7 +202,7 @@ Evidencia mínima de fase 1:
 7. **Backups:** incluir todas las tablas nuevas y ejecutar un restore drill
    sobre el esquema completo, no sólo comparar conteos parciales.
 8. **Dependencias y plataforma:** completar la migración aprobada a Next/Vercel
-   conservando D1/R2. No agregar servicios externos; Zernio y Anthropic son
+   conservando Supabase/R2. No agregar servicios externos; Zernio y Anthropic son
    opcionales y no se invocan realmente sin autorización explícita.
 
 ## Fase 4 — prueba comercial y operativa
@@ -219,7 +223,7 @@ punta, por la interfaz y por API:
 10. navegación desde 320, 360, 390, 430, 768 px y escritorio, teclado completo,
     sin overflow, con estados loading/empty/error/offline/stale.
 
-La evidencia debe incluir asserts sobre D1/R2 real de Wrangler. Las pruebas
+La evidencia debe incluir asserts sobre Supabase/R2 reales. Las pruebas
 estáticas de strings complementan, pero no sustituyen, el recorrido.
 
 ## Fase 5 — reconciliar local, GitHub y Vercel
@@ -230,10 +234,10 @@ estáticas de strings complementan, pero no sustituyen, el recorrido.
 4. Comparar el commit local validado con GitHub y el SHA desplegado en Vercel.
 5. Configurar variables alojadas sólo con valores confirmados en Preview y
    Production. Nunca guardar secretos ni datos operativos en Git.
-6. Ejecutar backup remoto antes de migrar D1 y ensayar restauración en una base
+6. Ejecutar backup remoto antes de migrar Supabase y ensayar restauración en una base
    descartable.
 7. Generar un preview privado desde GitHub. Verificar rutas críticas,
-   migraciones, D1, R2, sesión, autorización y logs de Vercel.
+   migraciones, Supabase, R2, sesión, autorización y logs de Vercel.
 8. No hacer pública la app ni invitar usuarios externos sin aprobación expresa.
 9. Informar URL privada, SHA y resultado de los logs. Habilitar producción
    desde pushes a `main` sólo tras cumplir las puertas; no usar deploys de CLI.
@@ -256,7 +260,7 @@ Además:
 
 - build y preview real de Next/Vercel;
 - cadena de migraciones desde cero e incremental;
-- pruebas D1/R2 del flujo comercial;
+- pruebas Supabase/R2 del flujo comercial;
 - revisión de logs alojados tras el despliegue;
 - comparación del SHA publicado con `HEAD`.
 
@@ -269,7 +273,7 @@ Este goal está completo únicamente cuando:
 
 1. No hay features nuevas en progreso ni cambios sin commit.
 2. Consignación está endurecida y aprobada como V1.1, o está aislada/no visible.
-3. No existe drift entre schema, migraciones, snapshots y D1.
+3. No existe drift entre schema, migraciones, snapshots y Supabase.
 4. Código, README, plan maestro, puertas de salida y UI describen el mismo
    alcance y los mismos límites.
 5. Todas las condiciones comerciales visibles provienen de datos confirmados o
@@ -277,7 +281,7 @@ Este goal está completo únicamente cuando:
 6. Las decisiones pendientes tienen responsable y bloquean sólo lo que deben.
 7. Panel y media privada fallan cerrados y los uploads usan capabilities fuertes.
 8. Reintentos no duplican lead, consentimiento, operación, consignación ni media.
-9. El recorrido completo fue probado en UI, API, D1 y R2 con evidencia.
+9. El recorrido completo fue probado en UI, API, Supabase y R2 con evidencia.
 10. Backup y restauración del esquema completo fueron ensayados.
 11. La versión desplegada corresponde exactamente al `HEAD` validado.
 12. Logs de producción no muestran errores nuevos y la URL privada funciona.
@@ -295,7 +299,7 @@ plan corto de integración y cerrar primero los cuatro riesgos críticos:
 
 1. autorización por token;
 2. idempotencia estable y alta atómica;
-3. lifecycle D1/R2 recuperable;
+3. lifecycle Supabase/R2 recuperable;
 4. migración 0008 reproducible con snapshot.
 
 No comenzar otra feature hasta completar y verificar esos cuatro puntos.

@@ -13,7 +13,11 @@ registerHooks({
       return {
         url: pathToFileURL(resolve(
           projectRoot,
-          relative.endsWith(".mjs") ? relative : `${relative}.ts`,
+          specifier === "@/db"
+            ? "db/index.ts"
+            : specifier === "@/lib/admin"
+              ? "lib/admin/index.ts"
+              : relative.endsWith(".mjs") ? relative : `${relative}.ts`,
         )).href,
         shortCircuit: true,
       };

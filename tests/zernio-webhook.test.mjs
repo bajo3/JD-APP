@@ -56,7 +56,11 @@ const NOW = new Date("2026-09-03T12:00:00.000Z");
 function sqliteD1(database) {
   function statement(sql, bindings = []) {
     return {
-      bind(...values) { return statement(sql, values); },
+      bind(...values) {
+        // node:sqlite no acepta un booleano nativo como bind: D1 real y el shim de
+        // Postgres sí lo hacen, así que la base de pruebas en SQLite lo traduce acá.
+        return statement(sql, values.map((v) => (typeof v === "boolean" ? (v ? 1 : 0) : v)));
+      },
       async first() { return database.prepare(sql).get(...bindings) ?? null; },
       async all() {
         return { results: database.prepare(sql).all(...bindings), success: true, meta: {} };
@@ -87,11 +91,22 @@ function sqliteD1(database) {
 function inboxDatabase() {
   const database = new DatabaseSync(":memory:");
   for (const path of [
-    "drizzle/0000_chemical_tiger_shark.sql",
-    "drizzle/0012_mysterious_forge.sql",
+    "drizzle-sqlite-archive/0000_chemical_tiger_shark.sql",
+    "drizzle-sqlite-archive/0012_mysterious_forge.sql",
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
+  // `seq` es una columna propia del esquema de Postgres (reemplaza el `rowid`
+  // implícito de SQLite como desempate estable); las migraciones archivadas no
+  // la declaran, así que la base de pruebas la agrega con un trigger que la
+  // sincroniza con el rowid real de cada inserción.
+  database.exec(`
+    ALTER TABLE inbox_message ADD COLUMN seq INTEGER;
+    CREATE TRIGGER trg_inbox_message_seq AFTER INSERT ON inbox_message
+    BEGIN
+      UPDATE inbox_message SET seq = NEW.rowid WHERE rowid = NEW.rowid;
+    END;
+  `);
   database
     .prepare(
       `INSERT INTO channel_account (id, provider, platform, external_account_id, display_name, status, default_assignee)

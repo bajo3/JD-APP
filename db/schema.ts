@@ -1,19 +1,30 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  bigserial,
+  boolean,
   index,
   integer,
+  pgTable,
   primaryKey,
-  sqliteTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/sqlite-core";
+} from "drizzle-orm/pg-core";
+
+// Replica exactamente el formato de `CURRENT_TIMESTAMP` de SQLite
+// ("YYYY-MM-DD HH:MM:SS", UTC, sin fracción ni sufijo de zona) para que las
+// filas que ya dependían del valor por defecto de la columna no cambien de
+// forma al migrar de D1 a Postgres. El código de aplicación que sí necesita
+// precisión ISO 8601 completa sigue mandando `new Date().toISOString()`
+// explícito en el insert, como ya hacía contra D1.
+const CURRENT_TIMESTAMP_UTC = sql`to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')`;
 
 const createdAt = () =>
-  text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`);
+  text("created_at").notNull().default(CURRENT_TIMESTAMP_UTC);
 const updatedAt = () =>
-  text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`);
+  text("updated_at").notNull().default(CURRENT_TIMESTAMP_UTC);
 
-export const businessProfiles = sqliteTable("business_profile", {
+export const businessProfiles = pgTable("business_profile", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   city: text("city").notNull(),
@@ -32,7 +43,7 @@ export const businessProfiles = sqliteTable("business_profile", {
   updatedAt: updatedAt(),
 });
 
-export const vehicles = sqliteTable(
+export const vehicles = pgTable(
   "vehicle",
   {
     id: text("id").primaryKey(),
@@ -43,7 +54,7 @@ export const vehicles = sqliteTable(
     trim: text("trim").notNull(),
     year: integer("year").notNull(),
     mileageKm: integer("mileage_km").notNull(),
-    priceCents: integer("price_cents").notNull(),
+    priceCents: bigint("price_cents", { mode: "number" }).notNull(),
     currency: text("currency").notNull().default("ARS"),
     priceValidUntil: text("price_valid_until"),
     bodyType: text("body_type").notNull(),
@@ -67,7 +78,7 @@ export const vehicles = sqliteTable(
   ],
 );
 
-export const vehicleMedia = sqliteTable(
+export const vehicleMedia = pgTable(
   "vehicle_media",
   {
     id: text("id").primaryKey(),
@@ -101,14 +112,14 @@ export const vehicleMedia = sqliteTable(
   ],
 );
 
-export const vehiclePriceHistory = sqliteTable(
+export const vehiclePriceHistory = pgTable(
   "vehicle_price_history",
   {
     id: text("id").primaryKey(),
     vehicleId: text("vehicle_id")
       .notNull()
       .references(() => vehicles.id, { onDelete: "cascade" }),
-    priceCents: integer("price_cents").notNull(),
+    priceCents: bigint("price_cents", { mode: "number" }).notNull(),
     currency: text("currency").notNull(),
     validFrom: text("valid_from").notNull(),
     validUntil: text("valid_until"),
@@ -119,7 +130,7 @@ export const vehiclePriceHistory = sqliteTable(
   (table) => [index("idx_vehicle_price_history_vehicle").on(table.vehicleId, table.validFrom)],
 );
 
-export const externalStockMappings = sqliteTable(
+export const externalStockMappings = pgTable(
   "external_stock_mapping",
   {
     id: text("id").primaryKey(),
@@ -139,7 +150,7 @@ export const externalStockMappings = sqliteTable(
   ],
 );
 
-export const stockSyncRuns = sqliteTable(
+export const stockSyncRuns = pgTable(
   "stock_sync_run",
   {
     id: text("id").primaryKey(),
@@ -156,7 +167,7 @@ export const stockSyncRuns = sqliteTable(
   (table) => [index("idx_stock_sync_provider_started").on(table.provider, table.startedAt)],
 );
 
-export const leads = sqliteTable(
+export const leads = pgTable(
   "lead",
   {
     id: text("id").primaryKey(),
@@ -182,7 +193,7 @@ export const leads = sqliteTable(
   ],
 );
 
-export const appraisalRuleSets = sqliteTable(
+export const appraisalRuleSets = pgTable(
   "appraisal_rule_set",
   {
     id: text("id").primaryKey(),
@@ -199,7 +210,7 @@ export const appraisalRuleSets = sqliteTable(
   (table) => [uniqueIndex("uq_appraisal_rule_set_version").on(table.version)],
 );
 
-export const appraisals = sqliteTable(
+export const appraisals = pgTable(
   "appraisal",
   {
     id: text("id").primaryKey(),
@@ -213,13 +224,13 @@ export const appraisals = sqliteTable(
     mileageKm: integer("mileage_km").notNull(),
     declaredCondition: text("declared_condition").notNull(),
     documentationStatus: text("documentation_status"),
-    hasLien: integer("has_lien", { mode: "boolean" }).notNull().default(false),
+    hasLien: boolean("has_lien").notNull().default(false),
     repairNotes: text("repair_notes"),
     status: text("status").notNull().default("SUBMITTED"),
     certaintyLevel: text("certainty_level").notNull().default("T0"),
-    lowCents: integer("low_cents"),
-    baseCents: integer("base_cents"),
-    highCents: integer("high_cents"),
+    lowCents: bigint("low_cents", { mode: "number" }),
+    baseCents: bigint("base_cents", { mode: "number" }),
+    highCents: bigint("high_cents", { mode: "number" }),
     currency: text("currency").notNull().default("ARS"),
     ruleSetId: text("rule_set_id").references(() => appraisalRuleSets.id, {
       onDelete: "set null",
@@ -239,7 +250,7 @@ export const appraisals = sqliteTable(
   ],
 );
 
-export const appraisalMedia = sqliteTable(
+export const appraisalMedia = pgTable(
   "appraisal_media",
   {
     id: text("id").primaryKey(),
@@ -262,7 +273,7 @@ export const appraisalMedia = sqliteTable(
   ],
 );
 
-export const consignments = sqliteTable(
+export const consignments = pgTable(
   "consignment",
   {
     id: text("id").primaryKey(),
@@ -277,7 +288,7 @@ export const consignments = sqliteTable(
     year: integer("year").notNull(),
     mileageKm: integer("mileage_km").notNull(),
     declaredCondition: text("declared_condition").notNull(),
-    askingPriceCents: integer("asking_price_cents"),
+    askingPriceCents: bigint("asking_price_cents", { mode: "number" }),
     ownerNotes: text("owner_notes"),
     status: text("status").notNull().default("SUBMITTED"),
     reviewedBy: text("reviewed_by"),
@@ -295,7 +306,7 @@ export const consignments = sqliteTable(
   ],
 );
 
-export const consignmentMedia = sqliteTable(
+export const consignmentMedia = pgTable(
   "consignment_media",
   {
     id: text("id").primaryKey(),
@@ -326,9 +337,9 @@ export const consignmentMedia = sqliteTable(
   ],
 );
 
-// Contadores de abuso por ventana fija: el Worker no guarda estado en
-// memoria; D1 es la única fuente y las filas vencen con la ventana.
-export const rateLimitWindows = sqliteTable(
+// Contadores de abuso por ventana fija: el servidor no guarda estado en
+// memoria; Postgres es la única fuente y las filas vencen con la ventana.
+export const rateLimitWindows = pgTable(
   "rate_limit_window",
   {
     key: text("key").primaryKey(),
@@ -339,7 +350,7 @@ export const rateLimitWindows = sqliteTable(
   (table) => [index("idx_rate_limit_expiry").on(table.expiresAt)],
 );
 
-export const financePlanVersions = sqliteTable(
+export const financePlanVersions = pgTable(
   "finance_plan_version",
   {
     id: text("id").primaryKey(),
@@ -359,7 +370,7 @@ export const financePlanVersions = sqliteTable(
     comfortablePaymentMarginBps: integer("comfortable_payment_margin_bps")
       .notNull()
       .default(1000),
-    isDemo: integer("is_demo", { mode: "boolean" }).notNull().default(false),
+    isDemo: boolean("is_demo").notNull().default(false),
     disclaimer: text("disclaimer").notNull(),
     validFrom: text("valid_from").notNull(),
     validUntil: text("valid_until").notNull(),
@@ -375,7 +386,7 @@ export const financePlanVersions = sqliteTable(
   ],
 );
 
-export const financePlanTiers = sqliteTable(
+export const financePlanTiers = pgTable(
   "finance_plan_tier",
   {
     id: text("id").primaryKey(),
@@ -383,8 +394,8 @@ export const financePlanTiers = sqliteTable(
       .notNull()
       .references(() => financePlanVersions.id, { onDelete: "cascade" }),
     termMonths: integer("term_months").notNull(),
-    minAmountCents: integer("min_amount_cents").notNull(),
-    maxAmountCents: integer("max_amount_cents").notNull(),
+    minAmountCents: bigint("min_amount_cents", { mode: "number" }).notNull(),
+    maxAmountCents: bigint("max_amount_cents", { mode: "number" }).notNull(),
     installmentCoefficientPpm: integer("installment_coefficient_ppm"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
@@ -402,7 +413,7 @@ export const financePlanTiers = sqliteTable(
   ],
 );
 
-export const promotions = sqliteTable(
+export const promotions = pgTable(
   "promotion",
   {
     id: text("id").primaryKey(),
@@ -412,13 +423,13 @@ export const promotions = sqliteTable(
     description: text("description").notNull(),
     type: text("type").notNull(),
     status: text("status").notNull().default("DRAFT"),
-    discountCents: integer("discount_cents").notNull().default(0),
-    tradeInBonusCents: integer("trade_in_bonus_cents").notNull().default(0),
+    discountCents: bigint("discount_cents", { mode: "number" }).notNull().default(0),
+    tradeInBonusCents: bigint("trade_in_bonus_cents", { mode: "number" }).notNull().default(0),
     financePlanVersionId: text("finance_plan_version_id").references(
       () => financePlanVersions.id,
       { onDelete: "set null" },
     ),
-    stackable: integer("stackable", { mode: "boolean" }).notNull().default(false),
+    stackable: boolean("stackable").notNull().default(false),
     normalConditionsSnapshotJson: text("normal_conditions_snapshot_json").notNull(),
     startsAt: text("starts_at").notNull(),
     endsAt: text("ends_at").notNull(),
@@ -435,7 +446,7 @@ export const promotions = sqliteTable(
   ],
 );
 
-export const promotionVehicles = sqliteTable(
+export const promotionVehicles = pgTable(
   "promotion_vehicle",
   {
     promotionId: text("promotion_id")
@@ -444,7 +455,7 @@ export const promotionVehicles = sqliteTable(
     vehicleId: text("vehicle_id")
       .notNull()
       .references(() => vehicles.id, { onDelete: "cascade" }),
-    isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
+    isPrimary: boolean("is_primary").notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [
@@ -453,7 +464,7 @@ export const promotionVehicles = sqliteTable(
   ],
 );
 
-export const simulations = sqliteTable(
+export const simulations = pgTable(
   "simulation",
   {
     id: text("id").primaryKey(),
@@ -470,15 +481,15 @@ export const simulations = sqliteTable(
     status: text("status").notNull().default("ACTIVE"),
     classification: text("classification").notNull(),
     certaintyLevel: text("certainty_level").notNull(),
-    vehiclePriceCents: integer("vehicle_price_cents").notNull(),
-    effectivePriceCents: integer("effective_price_cents").notNull(),
-    appraisalAppliedCents: integer("appraisal_applied_cents").notNull().default(0),
-    tradeInBonusCents: integer("trade_in_bonus_cents").notNull().default(0),
-    cashCents: integer("cash_cents").notNull().default(0),
-    financePrincipalCents: integer("finance_principal_cents").notNull().default(0),
+    vehiclePriceCents: bigint("vehicle_price_cents", { mode: "number" }).notNull(),
+    effectivePriceCents: bigint("effective_price_cents", { mode: "number" }).notNull(),
+    appraisalAppliedCents: bigint("appraisal_applied_cents", { mode: "number" }).notNull().default(0),
+    tradeInBonusCents: bigint("trade_in_bonus_cents", { mode: "number" }).notNull().default(0),
+    cashCents: bigint("cash_cents", { mode: "number" }).notNull().default(0),
+    financePrincipalCents: bigint("finance_principal_cents", { mode: "number" }).notNull().default(0),
     termMonths: integer("term_months"),
-    installmentCents: integer("installment_cents"),
-    totalCostCents: integer("total_cost_cents"),
+    installmentCents: bigint("installment_cents", { mode: "number" }),
+    totalCostCents: bigint("total_cost_cents", { mode: "number" }),
     currency: text("currency").notNull().default("ARS"),
     engineVersion: text("engine_version").notNull(),
     ruleVersion: text("rule_version").notNull(),
@@ -497,7 +508,7 @@ export const simulations = sqliteTable(
   ],
 );
 
-export const leadInterests = sqliteTable(
+export const leadInterests = pgTable(
   "lead_interest",
   {
     id: text("id").primaryKey(),
@@ -529,7 +540,7 @@ export const leadInterests = sqliteTable(
   ],
 );
 
-export const leadEvents = sqliteTable(
+export const leadEvents = pgTable(
   "lead_event",
   {
     id: text("id").primaryKey(),
@@ -546,7 +557,7 @@ export const leadEvents = sqliteTable(
   (table) => [index("idx_lead_event_lead_occurred").on(table.leadId, table.occurredAt)],
 );
 
-export const consents = sqliteTable(
+export const consents = pgTable(
   "consent",
   {
     id: text("id").primaryKey(),
@@ -572,7 +583,7 @@ export const consents = sqliteTable(
  * `password_iterations` viaja con cada fila para poder endurecer el costo sin
  * invalidar las cuentas existentes.
  */
-export const customerAccounts = sqliteTable(
+export const customerAccounts = pgTable(
   "customer_account",
   {
     id: text("id").primaryKey(),
@@ -599,7 +610,7 @@ export const customerAccounts = sqliteTable(
 );
 
 /** De la sesión sólo se persiste el SHA-256 del token entregado al navegador. */
-export const customerSessions = sqliteTable(
+export const customerSessions = pgTable(
   "customer_session",
   {
     id: text("id").primaryKey(),
@@ -619,12 +630,12 @@ export const customerSessions = sqliteTable(
 );
 
 /** Presupuesto, cuota y preferencias declaradas por la persona. */
-export const customerPreferences = sqliteTable("customer_preference", {
+export const customerPreferences = pgTable("customer_preference", {
   accountId: text("account_id")
     .primaryKey()
     .references(() => customerAccounts.id, { onDelete: "cascade" }),
-  budgetCents: integer("budget_cents"),
-  maxMonthlyPaymentCents: integer("max_monthly_payment_cents"),
+  budgetCents: bigint("budget_cents", { mode: "number" }),
+  maxMonthlyPaymentCents: bigint("max_monthly_payment_cents", { mode: "number" }),
   currency: text("currency").notNull().default("ARS"),
   preferredMakesJson: text("preferred_makes_json").notNull().default("[]"),
   preferredBodyTypesJson: text("preferred_body_types_json").notNull().default("[]"),
@@ -634,7 +645,7 @@ export const customerPreferences = sqliteTable("customer_preference", {
   updatedAt: updatedAt(),
 });
 
-export const customerFavorites = sqliteTable(
+export const customerFavorites = pgTable(
   "customer_favorite",
   {
     id: text("id").primaryKey(),
@@ -652,7 +663,7 @@ export const customerFavorites = sqliteTable(
   ],
 );
 
-export const customerSavedSearches = sqliteTable(
+export const customerSavedSearches = pgTable(
   "customer_saved_search",
   {
     id: text("id").primaryKey(),
@@ -670,7 +681,7 @@ export const customerSavedSearches = sqliteTable(
   ],
 );
 
-export const adminIdempotency = sqliteTable(
+export const adminIdempotency = pgTable(
   "admin_idempotency",
   {
     id: text("id").primaryKey(),
@@ -688,7 +699,7 @@ export const adminIdempotency = sqliteTable(
   ],
 );
 
-export const adminAuditLogs = sqliteTable(
+export const adminAuditLogs = pgTable(
   "admin_audit_log",
   {
     id: text("id").primaryKey(),
@@ -712,7 +723,7 @@ export const adminAuditLogs = sqliteTable(
   ],
 );
 
-export const channelAccounts = sqliteTable(
+export const channelAccounts = pgTable(
   "channel_account",
   {
     id: text("id").primaryKey(),
@@ -735,7 +746,7 @@ export const channelAccounts = sqliteTable(
   ],
 );
 
-export const channelWebhookEvents = sqliteTable(
+export const channelWebhookEvents = pgTable(
   "channel_webhook_event",
   {
     id: text("id").primaryKey(),
@@ -759,7 +770,7 @@ export const channelWebhookEvents = sqliteTable(
   ],
 );
 
-export const inboxConversations = sqliteTable(
+export const inboxConversations = pgTable(
   "inbox_conversation",
   {
     id: text("id").primaryKey(),
@@ -800,10 +811,17 @@ export const inboxConversations = sqliteTable(
   ],
 );
 
-export const inboxMessages = sqliteTable(
+export const inboxMessages = pgTable(
   "inbox_message",
   {
     id: text("id").primaryKey(),
+    /**
+     * Contador monotónico propio de Postgres. SQLite resolvía el desempate de
+     * "el mensaje realmente más nuevo" con su `rowid` implícito; Postgres no
+     * tiene ese concepto, así que esta columna lo reemplaza explícitamente
+     * para `ORDER BY occurred_at DESC, seq DESC`.
+     */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
     conversationId: text("conversation_id")
       .notNull()
       .references(() => inboxConversations.id, { onDelete: "cascade" }),
@@ -838,7 +856,7 @@ export const inboxMessages = sqliteTable(
   ],
 );
 
-export const buyerPassports = sqliteTable(
+export const buyerPassports = pgTable(
   "buyer_passport",
   {
     id: text("id").primaryKey(),
@@ -851,9 +869,9 @@ export const buyerPassports = sqliteTable(
     /** Capability secreta: sólo se persiste su SHA-256. */
     reviewTokenHash: text("review_token_hash"),
     status: text("status").notNull().default("DRAFT"),
-    budgetCents: integer("budget_cents"),
-    downPaymentCents: integer("down_payment_cents"),
-    maxMonthlyPaymentCents: integer("max_monthly_payment_cents"),
+    budgetCents: bigint("budget_cents", { mode: "number" }),
+    downPaymentCents: bigint("down_payment_cents", { mode: "number" }),
+    maxMonthlyPaymentCents: bigint("max_monthly_payment_cents", { mode: "number" }),
     currency: text("currency").notNull().default("ARS"),
     desiredMakesJson: text("desired_makes_json").notNull().default("[]"),
     desiredModelsJson: text("desired_models_json").notNull().default("[]"),
@@ -861,7 +879,7 @@ export const buyerPassports = sqliteTable(
     minYear: integer("min_year"),
     maxMileageKm: integer("max_mileage_km"),
     primaryUse: text("primary_use"),
-    needsFinancing: integer("needs_financing", { mode: "boolean" }),
+    needsFinancing: boolean("needs_financing"),
     tradeInAppraisalId: text("trade_in_appraisal_id").references(() => appraisals.id, {
       onDelete: "set null",
     }),
@@ -884,7 +902,7 @@ export const buyerPassports = sqliteTable(
   ],
 );
 
-export const visitRequests = sqliteTable(
+export const visitRequests = pgTable(
   "visit_request",
   {
     id: text("id").primaryKey(),
@@ -909,7 +927,7 @@ export const visitRequests = sqliteTable(
   ],
 );
 
-export const demands = sqliteTable(
+export const demands = pgTable(
   "demand",
   {
     id: text("id").primaryKey(),
@@ -938,7 +956,7 @@ export const demands = sqliteTable(
   ],
 );
 
-export const demandMatches = sqliteTable(
+export const demandMatches = pgTable(
   "demand_match",
   {
     id: text("id").primaryKey(),

@@ -1,12 +1,4 @@
-import {
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { resolveDataRuntime } from "./data-runtime.mjs";
 
 const DEMO_DISCLAIMER =
@@ -14,6 +6,7 @@ const DEMO_DISCLAIMER =
 
 function literal(value) {
   if (value === null) return "NULL";
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value)) throw new TypeError("Seed numbers must be safe integers");
     return String(value);
@@ -97,7 +90,6 @@ export function buildDemoSeedSql(now = new Date()) {
   }));
 
   const statements = [
-    "PRAGMA foreign_keys=ON;",
     insert(
       "business_profile",
       [
@@ -210,7 +202,7 @@ export function buildDemoSeedSql(now = new Date()) {
           allowed_vehicle_types_json: JSON.stringify(["car", "suv", "pickup"]),
           max_vehicle_age_years: 10,
           comfortable_payment_margin_bps: 1000,
-          is_demo: 1,
+          is_demo: true,
           disclaimer: DEMO_DISCLAIMER,
           valid_from: validFrom,
           valid_until: planEndsAt,
@@ -269,7 +261,7 @@ export function buildDemoSeedSql(now = new Date()) {
           status: "ACTIVE",
           discount_cents: 100000000,
           trade_in_bonus_cents: 0,
-          stackable: 0,
+          stackable: false,
           normal_conditions_snapshot_json: JSON.stringify({
             vehicleId: "veh-tcross-2022",
             normalPriceCents: 3280000000,
@@ -283,69 +275,43 @@ export function buildDemoSeedSql(now = new Date()) {
       ],
       ["starts_at", "ends_at", "published_at", "updated_at"],
     ),
-    "INSERT INTO promotion_vehicle (promotion_id, vehicle_id, is_primary) VALUES ('promo-demo-dia', 'veh-tcross-2022', 1) ON CONFLICT(promotion_id, vehicle_id) DO UPDATE SET is_primary = excluded.is_primary;",
-    "PRAGMA optimize;",
+    "INSERT INTO promotion_vehicle (promotion_id, vehicle_id, is_primary) VALUES ('promo-demo-dia', 'veh-tcross-2022', TRUE) ON CONFLICT(promotion_id, vehicle_id) DO UPDATE SET is_primary = excluded.is_primary;",
   ];
   return `${statements.join("\n\n")}\n`;
 }
 
 function parseArgs(argv) {
-  const remote = argv.includes("--remote");
-  if (remote && !argv.includes("--confirm-demo")) {
-    throw new Error("Remote demo seed requires the explicit --confirm-demo flag.");
+  const dryRun = argv.includes("--dry-run");
+  if (!dryRun && !argv.includes("--confirm-demo")) {
+    throw new Error("Sembrar contra Supabase requiere el flag explícito --confirm-demo.");
   }
-  const databaseIndex = argv.indexOf("--database");
-  const database = databaseIndex >= 0 ? argv[databaseIndex + 1] : "DB";
-  if (!database || !/^[A-Za-z0-9_-]+$/.test(database)) {
-    throw new Error("Invalid D1 database name.");
-  }
-  return { database, dryRun: argv.includes("--dry-run"), remote };
+  return { dryRun, remote: true, confirmRemote: true };
 }
 
-export function resolveSeedRuntime(argv = [], projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..")) {
+export function resolveSeedRuntime(argv = []) {
   const options = parseArgs(argv);
-  return resolveDataRuntime(options, projectRoot);
+  return resolveDataRuntime(options);
 }
 
-export function runDemoSeed(argv = process.argv.slice(2)) {
-  const scriptDir = dirname(fileURLToPath(import.meta.url));
-  const runtime = resolveSeedRuntime(argv, join(scriptDir, ".."));
-  let tempDir = null;
+export async function runDemoSeed(argv = process.argv.slice(2)) {
+  const runtime = resolveSeedRuntime(argv);
   try {
     const sql = buildDemoSeedSql();
     if (runtime.dryRun) {
       process.stdout.write(sql);
       return;
     }
-
-    tempDir = mkdtempSync(join(tmpdir(), "jda-demo-seed-"));
-    const sqlFile = join(tempDir, "seed.sql");
-    writeFileSync(sqlFile, sql, { encoding: "utf8", flag: "wx" });
-    const target = runtime.remote ? "--remote" : "--local";
-    const args = [
-      "d1",
-      "execute",
-      runtime.database,
-      target,
-      "--config",
-      runtime.configPath,
-      "--yes",
-      "--file",
-      sqlFile,
-    ];
-    if (!runtime.remote) args.push("--persist-to", runtime.persistPath);
-    const result = spawnSync(
-      process.execPath,
-      [runtime.wrangler, ...args],
-      { cwd: runtime.projectRoot, env: runtime.wranglerEnv, encoding: "utf8", stdio: "inherit" },
-    );
-    if (result.error) throw result.error;
-    if (result.status !== 0) process.exitCode = result.status ?? 1;
+    await runtime.d1.exec(sql);
+    console.log("Base DEMO sembrada.");
   } finally {
-    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
-    runtime.cleanup();
+    await runtime.cleanup();
   }
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
-if (invokedPath === import.meta.url) runDemoSeed();
+if (invokedPath === import.meta.url) {
+  runDemoSeed().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

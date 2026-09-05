@@ -1,8 +1,9 @@
 # Jesús Díaz Automotores
 
 Web/PWA mobile-first para Jesús Díaz Automotores (Tandil), construida sobre
-Next App Router. El runtime ya es compatible con Vercel; faltan las pruebas
-privadas contra D1/R2 remotos antes de conectar el repositorio a producción.
+Next App Router. El runtime corre en Vercel; la base de datos es Postgres en
+Supabase (`SUPABASE_DB_URL`) y las fotos siguen en Cloudflare R2, compatible
+S3, mientras se completa su migración a Supabase Storage.
 El contrato y sus puertas están en [MIGRACION_VERCEL.md](MIGRACION_VERCEL.md). La V1 incluye catálogo demo, ficha de
 vehículos, tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del
 Día, contacto/WhatsApp y un panel operativo protegido. La consignación
@@ -25,8 +26,8 @@ La aplicación contiene datos demo y estados orientativos. No representa
 aprobación financiera, tasación definitiva, disponibilidad comercial ni
 condiciones vigentes hasta conectar y validar las fuentes reales del negocio.
 Los datos comerciales incluidos siguen marcados como DEMO. El panel permite
-mutaciones reales sobre D1, siempre con autorización, auditoría, idempotencia
-y control de versión; no realiza borrados físicos.
+mutaciones reales sobre Supabase, siempre con autorización, auditoría,
+idempotencia y control de versión; no realiza borrados físicos.
 
 ## Requisitos y comandos
 
@@ -55,13 +56,13 @@ puede demostrar—. El seed vuelve a sellar el stock, deja un tarifario vigente 
 una oferta con vencimiento a 23 horas, todo marcado como ficticio:
 
 ```bash
-npm run db:seed        # D1 local
-npm run db:seed -- --dry-run   # imprime el SQL sin ejecutarlo
+npm run db:seed -- --confirm-demo   # siembra Supabase
+npm run db:seed -- --dry-run        # imprime el SQL sin ejecutarlo
 ```
 
-Sobre la base alojada exige confirmacion explicita
-(`npm run db:seed -- --remote --confirm-demo`). Estos datos nunca son fuente
-comercial: cada condicion se muestra marcada como DEMO.
+Como sólo existe una base (Supabase), sembrar exige el flag explícito
+`--confirm-demo`. Estos datos nunca son fuente comercial: cada condición se
+muestra marcada como DEMO.
 
 ### Stock real desde JD-Auto
 
@@ -75,14 +76,15 @@ se rechaza con su motivo y no se publica — el comando imprime la lista
 completa de publicables y de rechazadas.
 
 ```bash
-npm run stock:sync -- --dry-run     # imprime el resultado sin escribir
-npm run stock:sync                  # publica en la D1 y el R2 locales
+npm run stock:sync -- --dry-run                    # imprime el resultado sin escribir
+npm run stock:sync -- --confirm-remote             # publica en Supabase y en R2
 ```
 
 `--photos <n>` cambia el tope de fotos por unidad (12 por defecto, hasta 40);
-`--skip-photos` sincroniza solo los datos. Sobre el entorno alojado exige
-`--remote --confirm-remote`. Cada corrida es idempotente por el hash del
-payload: una unidad sin cambios no vuelve a escribirse ni a resubir fotos.
+`--skip-photos` sincroniza solo los datos. Como sólo existe una base, escribir
+exige el flag explícito `--confirm-remote`. Cada corrida es idempotente por el
+hash del payload: una unidad sin cambios no vuelve a escribirse ni a resubir
+fotos.
 
 El stock DEMO no se borra: al publicar la primera unidad real conviene
 archivar manualmente las unidades `DEMO_SEED` desde el panel (o con
@@ -97,40 +99,43 @@ npm run db:generate
 
 ## Base de datos: migraciones, backup y restauracion
 
-Los comandos de mantenimiento usan `wrangler.data.json`, una configuración
-fuente de D1/R2 local. No requieren un build ni archivos antiguos en `dist` y
-no despliegan un Worker. En remoto, resuelven los identificadores y secretos
-desde el entorno confirmado; el token no se escribe en la configuración.
+Los comandos de mantenimiento hablan directo con Supabase por
+`SUPABASE_DB_URL` (Postgres puro, sin binarios externos: sólo el paquete
+`postgres`). No requieren un build ni un proceso separado, y como sólo existe
+una base real, cada comando que escribe pide su propio flag de confirmación
+explícito.
 
 Las migraciones se generan con Drizzle y se aplican con un script que registra
 cada archivo en `schema_migrations`, asi que el comando es repetible:
 
 ```bash
-npm run db:migrate
+npm run db:migrate -- --confirm-remote
 ```
 
 Una base creada antes de esa tabla se marca una sola vez con
-`node scripts/d1-migrate.mjs --baseline <id_de_migracion>`; `--dry-run` lista lo
-pendiente sin escribir y el entorno remoto exige `--remote --confirm-remote`.
+`node scripts/d1-migrate.mjs --confirm-remote --baseline <id_de_migracion>`;
+`--dry-run` lista lo pendiente sin escribir ni pedir confirmación.
 
-El backup exporta la base a `backups/` (ignorado por git: son datos reales) y
-reordena el volcado para que cada fila se inserte despues de crear su tabla,
-que es lo que hace restaurable el archivo:
+El backup vuelca cada tabla a `backups/` (ignorado por git: son datos reales)
+en orden de dependencia (una fila nunca se inserta antes que la fila a la que
+referencia), como sentencias `INSERT` de Postgres:
 
 ```bash
 npm run db:backup
 ```
 
-El ensayo de restauracion exporta, restaura en una base descartable y compara
-los conteos de todas las tablas del snapshot Drizzle; falla si falta una tabla
-o un conteo difiere. Este control no demuestra igualdad de contenido ni
-restauración de bytes R2:
+El ensayo de restauracion vuelca los datos, los restaura en un esquema de
+Postgres descartable (creado y eliminado en la misma corrida, nunca toca
+`public`) y compara los conteos de todas las tablas del snapshot Drizzle;
+falla si falta una tabla o un conteo difiere. Este control no demuestra
+igualdad de contenido ni restauración de bytes en el object storage:
 
 ```bash
 npm run db:drill
 ```
 
-Para restaurar de verdad hace falta el flag explicito, porque sobrescribe:
+Para restaurar de verdad hace falta el flag explicito, porque sobrescribe
+todas las tablas de la base real:
 `node scripts/d1-backup.mjs --restore backups/<archivo>.sql --confirm-restore`.
 
 ## Variables de entorno
@@ -184,8 +189,8 @@ los roles por función quedan para una versión posterior si el equipo crece.
 
 Las mutaciones públicas (búsquedas, simulaciones, leads, handoffs, tasaciones,
 consignaciones y sus fotos) pasan por un limitador de abuso por IP con ventana
-fija persistido en D1 —sin estado en memoria del Worker— que responde `429`
-estable con `Retry-After` cuando la ventana se agota.
+fija persistido en Supabase —sin estado en memoria de la función serverless—
+que responde `429` estable con `Retry-After` cuando la ventana se agota.
 
 `POST /api/v1/webhooks/zernio` queda fuera de ese limitador a propósito: el
 proveedor entrega desde un puñado de direcciones y un tope por IP castigaría
@@ -231,7 +236,7 @@ Cómo se protege:
   aleatoria por cuenta. Cada fila conserva su número de iteraciones, así que
   subir el costo no invalida las cuentas viejas: se rehashean al ingresar.
 - La sesión es un token de 256 bits en cookie `HttpOnly`, `SameSite=Lax` y
-  `Secure` fuera de localhost. De D1 sólo sale su SHA-256.
+  `Secure` fuera de localhost. De la base sólo sale su SHA-256.
 - El ingreso responde lo mismo ante correo inexistente y contraseña incorrecta,
   así que no se puede averiguar qué correos están registrados.
 - Ocho intentos fallidos bloquean la cuenta quince minutos; en paralelo, el
@@ -249,14 +254,14 @@ correo**: ambas necesitan un proveedor de envío que el negocio no definió (ver
 Las rutas viven bajo `/api/v1/account/**`.
 
 Para habilitar un operador, confirmar con esa persona su cuenta y obtener su
-ID de una consulta administrativa autorizada a D1. No aprobar automáticamente
+ID de una consulta administrativa autorizada a Supabase. No aprobar automáticamente
 una cuenta encontrada por email: puede haber sido registrada por otra persona.
 Configurar ID y correo en el entorno correspondiente y probar acceso, rechazo
 de otra cuenta y cierre de sesión. No registrar los valores en Git ni en logs.
 
 ## Panel interno
 
-- `/panel` — resumen operativo, embudo comercial y desgloses por canal, vehículo y responsable calculados desde D1.
+- `/panel` — resumen operativo, embudo comercial y desgloses por canal, vehículo y responsable calculados desde Supabase.
 - `/panel/conversaciones` — cola multicanal, asignación, seguimiento interno y respuesta manual.
 - `/panel/leads` — pipeline y cambios de etapa.
 - `/panel/stock` — alta y ciclo de publicación del inventario.
