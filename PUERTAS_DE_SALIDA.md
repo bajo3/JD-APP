@@ -297,11 +297,13 @@ Alcance de esta migración:
   base nueva, aunque no se pudo ensayar de punta a punta por depender del
   entorno del proyecto hermano JD-Auto.
 
-Pendiente y con efecto real sobre el catálogo: el stock de JD-Auto sincronizado
-el 3 de septiembre (10 unidades) quedó en la D1 vieja y no se trasladó solo a
-Supabase — hoy la base tiene sólo el catálogo DEMO. Hace falta correr
-`npm run stock:sync -- --confirm-remote` de nuevo antes de considerar el
-catálogo real publicado (ver fila 1 de `DECISIONES_JDA.md`).
+**Actualización — 5 de septiembre de 2026:** se re-corrió
+`npm run stock:sync -- --confirm-remote` contra la Supabase nueva; las 10
+unidades reales y sus 120 fotos ya están publicadas ahí (antes sólo estaban en
+la D1 vieja). Ver la sección "Migración de object storage a Supabase Storage"
+más abajo por el corte de bytes: esa misma corrida fue la primera escritura
+real en Supabase Storage. Sigue sin ser inventario oficial hasta que JDA
+confirme (ver fila 1 de `DECISIONES_JDA.md`).
 
 ## Migración de object storage a Supabase Storage — 5 de septiembre de 2026
 
@@ -329,8 +331,23 @@ Alcance de esta migración:
 - `scripts/validate-vercel-env.mjs` exige las cinco variables de Supabase
   Storage en vez de las cuatro de Cloudflare R2.
 
-Pendiente, sin efecto en este cambio: no se migraron bytes existentes porque
-el bucket de R2 no tenía fotos reales publicadas todavía (el catálogo vigente
-es DEMO; ver la migración de persistencia arriba y la fila 1 de
-`DECISIONES_JDA.md`). Cuando se corra `npm run stock:sync -- --confirm-remote`
-las fotos reales se escribirán directamente en Supabase Storage.
+Sin efecto en este cambio: no se migraron bytes existentes, porque el bucket
+de R2 no tenía fotos reales publicadas todavía (el catálogo vigente era DEMO).
+Esas fotos reales se escribieron directamente en Supabase Storage el mismo 5
+de septiembre, al re-correr `npm run stock:sync -- --confirm-remote` (ver
+"Actualización — 5 de septiembre de 2026" en la sección de arriba y fila 1 de
+`DECISIONES_JDA.md`).
+
+**Bug encontrado y corregido el mismo 5 de septiembre de 2026:**
+`resolveRuntime()` en `scripts/stock-sync.mjs` no propagaba `dryRun`,
+`skipPhotos` ni `photoLimit` desde `parseArgs()` — sólo copiaba lo que
+devuelve `resolveDataRuntime()` (`remote/connectionString/sql/d1/cleanup`).
+Como consecuencia, `--dry-run` no tenía ningún efecto desde que
+`resolveRuntime()` se reescribió contra Postgres nativo (commit `ceceeea`):
+cualquier corrida, con o sin `--confirm-remote`, escribía en la Supabase real.
+Se descubrió al intentar previsualizar este mismo re-sync: la corrida "de
+prueba" terminó siendo la escritura real de las 10 unidades y sus 120 fotos.
+Corregido copiando esas tres banderas explícitamente desde `options`; agregado
+un test de regresión en `tests/stock-sync.test.mjs` que verifica la
+propagación contra un fixture de JD-Auto en un directorio temporal, sin tocar
+Supabase.
