@@ -4,7 +4,7 @@
 
 La instrucción vigente del usuario reemplaza las referencias históricas a
 Sites/Vinext: sólo GitHub `bajo3/JD-APP` → Vercel, con `main` canónica,
-Next.js 16, Postgres en Supabase y R2 privado por S3. No usar ni publicar Sites
+Next.js 16, Postgres en Supabase y Supabase Storage privado por S3. No usar ni publicar Sites
 ni tocar `meli-app`. Sol planifica los contratos y revisa; Luna ejecuta los
 cambios. Las puertas operativas vigentes están en `MIGRACION_VERCEL.md`. Las
 evidencias del Worker anterior deben repetirse en el runtime nuevo antes de
@@ -12,6 +12,12 @@ publicar. Actualización del 4 de septiembre: la base de datos migró de
 Cloudflare D1 a Supabase (ver `PUERTAS_DE_SALIDA.md`); las referencias a
 "Supabase" más abajo (reemplazadas automáticamente desde "D1") describen en
 realidad el estado y los contratos anteriores a esa migración.
+
+Actualización del 5 de septiembre: el object storage migró de Cloudflare R2 a
+Supabase Storage (ver `PUERTAS_DE_SALIDA.md`, sección "Migración de object
+storage a Supabase Storage"); las referencias a "Supabase Storage" más abajo
+(reemplazadas automáticamente desde "R2") describen igualmente el estado y los
+contratos anteriores a esa migración.
 
 ## Objetivo único
 
@@ -73,11 +79,11 @@ Asignar a Sol únicamente tareas con invariantes, seguridad o persistencia:
 - migraciones y compatibilidad Supabase;
 - idempotencia y transacciones;
 - autorización de cargas privadas;
-- ciclo Supabase/R2 y recuperación ante caídas;
+- ciclo Supabase/Supabase Storage y recuperación ante caídas;
 - límites de abuso y rate limiting;
 - contratos API, estados y errores estables;
 - datos reales/demo, snapshots y reglas comerciales;
-- backup, restauración, auditoría y pruebas reales contra Supabase/R2.
+- backup, restauración, auditoría y pruebas reales contra Supabase/Supabase Storage.
 
 Sol debe congelar el contrato antes de que la interfaz se adapte. Nunca delegar
 la interpretación de estas instrucciones: el agente principal debe leerlas y
@@ -121,10 +127,10 @@ pasen. Resolver estas brechas antes de commit:
 3. **Claves estables en cliente.** No generar una idempotency key nueva en cada
    `fetch`. Mantener una clave estable por alta y otra por cada captura durante
    todos los reintentos del mismo intento.
-4. **Ciclo Supabase/R2 recuperable.** Modelar media como
+4. **Ciclo Supabase/Supabase Storage recuperable.** Modelar media como
    `PENDING → READY | FAILED → ARCHIVED`, con versión, request hash y timestamps.
    Sólo `READY` se lista o entrega. Una caída después de reservar Supabase, después de
-   escribir R2 o antes de confirmar Supabase debe poder reanudarse o compensarse sin
+   escribir en Supabase Storage o antes de confirmar Supabase debe poder reanudarse o compensarse sin
    afirmar éxito falso. Agregar reconciliación para PENDING/FAILED antiguos.
 5. **Finalización real.** El servidor, no sólo la UI, debe exigir exactamente
    las cinco capturas READY antes de permitir `SUBMITTED → IN_REVIEW`.
@@ -132,7 +138,7 @@ pasen. Resolver estas brechas antes de commit:
    migración Drizzle coherente con su snapshot y journal. Aplicar de cero toda
    la cadena, aplicar sobre una base en 0007 y demostrar que una segunda corrida
    no hace nada. `npm run db:generate` debe responder “sin cambios”.
-7. **Privacidad.** Mantener R2 privado, limpieza de EXIF en servidor, límites
+7. **Privacidad.** Mantener Supabase Storage privado, limpieza de EXIF en servidor, límites
    streaming y lectura exclusiva del panel. Probar que el código público solo,
    URLs adivinadas, media no READY y registros cerrados no entregan bytes.
 8. **Interfaz mantenible.** Dividir `ConsignmentForm.tsx` en componentes y
@@ -148,9 +154,9 @@ pasen. Resolver estas brechas antes de commit:
 Evidencia mínima de fase 1:
 
 - pruebas de token, replay, conflicto, cuota, slots y estados;
-- pruebas de fallos inyectados entre Supabase/R2 y recuperación;
+- pruebas de fallos inyectados entre Supabase/Supabase Storage y recuperación;
 - migración limpia, incremental y repetible;
-- flujo real en Supabase y R2 reales;
+- flujo real en Supabase y Supabase Storage reales;
 - pruebas de autorización administrativa antes de leer PII o bytes;
 - TypeScript, ESLint y build verdes.
 
@@ -202,7 +208,7 @@ Evidencia mínima de fase 1:
 7. **Backups:** incluir todas las tablas nuevas y ejecutar un restore drill
    sobre el esquema completo, no sólo comparar conteos parciales.
 8. **Dependencias y plataforma:** completar la migración aprobada a Next/Vercel
-   conservando Supabase/R2. No agregar servicios externos; Zernio y Anthropic son
+   conservando Supabase/Supabase Storage. No agregar servicios externos; Zernio y Anthropic son
    opcionales y no se invocan realmente sin autorización explícita.
 
 ## Fase 4 — prueba comercial y operativa
@@ -223,7 +229,7 @@ punta, por la interfaz y por API:
 10. navegación desde 320, 360, 390, 430, 768 px y escritorio, teclado completo,
     sin overflow, con estados loading/empty/error/offline/stale.
 
-La evidencia debe incluir asserts sobre Supabase/R2 reales. Las pruebas
+La evidencia debe incluir asserts sobre Supabase/Supabase Storage reales. Las pruebas
 estáticas de strings complementan, pero no sustituyen, el recorrido.
 
 ## Fase 5 — reconciliar local, GitHub y Vercel
@@ -237,7 +243,7 @@ estáticas de strings complementan, pero no sustituyen, el recorrido.
 6. Ejecutar backup remoto antes de migrar Supabase y ensayar restauración en una base
    descartable.
 7. Generar un preview privado desde GitHub. Verificar rutas críticas,
-   migraciones, Supabase, R2, sesión, autorización y logs de Vercel.
+   migraciones, Supabase (DB y Storage), sesión, autorización y logs de Vercel.
 8. No hacer pública la app ni invitar usuarios externos sin aprobación expresa.
 9. Informar URL privada, SHA y resultado de los logs. Habilitar producción
    desde pushes a `main` sólo tras cumplir las puertas; no usar deploys de CLI.
@@ -260,7 +266,7 @@ Además:
 
 - build y preview real de Next/Vercel;
 - cadena de migraciones desde cero e incremental;
-- pruebas Supabase/R2 del flujo comercial;
+- pruebas Supabase/Supabase Storage del flujo comercial;
 - revisión de logs alojados tras el despliegue;
 - comparación del SHA publicado con `HEAD`.
 
@@ -281,7 +287,7 @@ Este goal está completo únicamente cuando:
 6. Las decisiones pendientes tienen responsable y bloquean sólo lo que deben.
 7. Panel y media privada fallan cerrados y los uploads usan capabilities fuertes.
 8. Reintentos no duplican lead, consentimiento, operación, consignación ni media.
-9. El recorrido completo fue probado en UI, API, Supabase y R2 con evidencia.
+9. El recorrido completo fue probado en UI, API, Supabase y Supabase Storage con evidencia.
 10. Backup y restauración del esquema completo fueron ensayados.
 11. La versión desplegada corresponde exactamente al `HEAD` validado.
 12. Logs de producción no muestran errores nuevos y la URL privada funciona.
@@ -299,7 +305,7 @@ plan corto de integración y cerrar primero los cuatro riesgos críticos:
 
 1. autorización por token;
 2. idempotencia estable y alta atómica;
-3. lifecycle Supabase/R2 recuperable;
+3. lifecycle Supabase/Supabase Storage recuperable;
 4. migración 0008 reproducible con snapshot.
 
 No comenzar otra feature hasta completar y verificar esos cuatro puntos.

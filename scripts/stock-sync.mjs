@@ -1,4 +1,5 @@
-// Sincroniza el stock real de JD-Auto hacia la D1 y el R2 de esta web.
+// Sincroniza el stock real de JD-Auto hacia la Supabase y el Supabase Storage
+// de esta web.
 //
 // Las tres fuentes viven en el proyecto JD-Auto y cada una aporta lo suyo:
 //   - la planilla publicada de JDA es la verdad del precio y de la moneda
@@ -588,26 +589,30 @@ function resolveRuntime(options, projectRoot) {
     // La misma cuenta de object storage que sirve las fotos publicadas
     // (lib/data/storage.ts): no hay un almacenamiento "local" propio de este
     // script, así que la sincronización siempre escribe ahí.
-    bucket: requiredEnvironment("CLOUDFLARE_R2_BUCKET"),
-    r2Config: {
-      endpoint: requiredEnvironment("CLOUDFLARE_R2_ENDPOINT"),
-      accessKeyId: requiredEnvironment("CLOUDFLARE_R2_ACCESS_KEY_ID"),
-      secretAccessKey: requiredEnvironment("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+    bucket: requiredEnvironment("SUPABASE_STORAGE_BUCKET"),
+    storageConfig: {
+      endpoint: requiredEnvironment("SUPABASE_STORAGE_ENDPOINT"),
+      region: requiredEnvironment("SUPABASE_STORAGE_REGION"),
+      accessKeyId: requiredEnvironment("SUPABASE_STORAGE_ACCESS_KEY_ID"),
+      secretAccessKey: requiredEnvironment("SUPABASE_STORAGE_SECRET_ACCESS_KEY"),
     },
   };
 }
 
-async function r2Put(runtime, key, file, contentType) {
-  runtime.r2Client ??= new S3Client({
-    region: "auto",
-    endpoint: runtime.r2Config.endpoint,
+async function putStorageObject(runtime, key, file, contentType) {
+  runtime.storageClient ??= new S3Client({
+    region: runtime.storageConfig.region,
+    endpoint: runtime.storageConfig.endpoint,
+    // El endpoint S3 de Supabase Storage vive bajo /storage/v1/s3 y espera
+    // el bucket como primer segmento de ruta, no como subdominio.
+    forcePathStyle: true,
     credentials: {
-      accessKeyId: runtime.r2Config.accessKeyId,
-      secretAccessKey: runtime.r2Config.secretAccessKey,
+      accessKeyId: runtime.storageConfig.accessKeyId,
+      secretAccessKey: runtime.storageConfig.secretAccessKey,
     },
   });
   try {
-    await runtime.r2Client.send(
+    await runtime.storageClient.send(
       new PutObjectCommand({
         Bucket: runtime.bucket,
         Key: key,
@@ -797,7 +802,7 @@ export async function runStockSync(argv = process.argv.slice(2)) {
     });
 
     for (const photo of media) {
-      await r2Put(runtime, photo.r2Key, photo.file, photo.contentType);
+      await putStorageObject(runtime, photo.r2Key, photo.file, photo.contentType);
     }
     await runtime.d1.exec(sql);
 

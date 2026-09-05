@@ -20,6 +20,13 @@ opcionales: sus endpoints se cierran con `503` cuando no están configurados.
 > describe el plan original; el resultado real de la migración de persistencia
 > está en `PUERTAS_DE_SALIDA.md` (sección "Migración de persistencia a
 > Supabase"). El object storage sigue en Cloudflare R2 sin cambios.
+>
+> **Actualización — 5 de septiembre de 2026:** por instrucción del usuario, el
+> object storage dejó de ser Cloudflare R2 y pasó a ser Supabase Storage vía
+> su protocolo S3 compatible (`SUPABASE_STORAGE_*`), mismo proyecto que
+> `SUPABASE_DB_URL`. Todo lo que este documento dice sobre "R2" abajo describe
+> el plan/estado original; `lib/data/supabase-storage-remote.ts` reemplaza a
+> `lib/data/r2-remote.ts` con el mismo contrato `ObjectStore`.
 
 ## Contrato congelado
 
@@ -30,9 +37,10 @@ opcionales: sus endpoints se cierran con `503` cuando no están configurados.
   `first`, `all`, `run` y `batch`) sin cambiar el SQL de negocio ni las
   transacciones lógicas; sólo tradujo lo que difiere entre SQLite y Postgres
   (placeholders posicionales, `changes()`).
-- Los objetos permanecen privados en R2. El adaptador de servidor usará la API
-  S3 de R2 con un token restringido al bucket; los bytes privados sólo salen
-  después de la autorización ya existente. No se reemplaza por URLs públicas.
+- Los objetos permanecen privados en Supabase Storage. `lib/data/supabase-storage-remote.ts`
+  usa su API S3 compatible con una clave restringida al bucket; los bytes
+  privados sólo salen después de la autorización ya existente. No se
+  reemplaza por URLs públicas.
 - El panel usa la sesión HttpOnly de las cuentas propias más
   `PANEL_ALLOWED_EMAILS` y `PANEL_ALLOWED_ACCOUNT_IDS`. Ambos deben coincidir.
   El registro no verifica email: habilitar únicamente IDs cuya titularidad
@@ -47,16 +55,17 @@ opcionales: sus endpoints se cierran con `503` cuando no están configurados.
   Supabase real: consultas preparadas, parámetros, `first`, `all`, `run` y
   `batch` (atómico, en una transacción de Postgres). Los errores no devuelven
   SQL, cuerpo del proveedor ni credenciales.
-- `lib/data/r2-remote.ts` implementa y prueba el contrato S3 compatible de R2:
-  mantiene claves y metadata de stock/piezas privadas, no crea URLs públicas y
-  conserva la entrega privada bajo autorización de los servicios existentes.
+- `lib/data/supabase-storage-remote.ts` implementa y prueba el contrato S3
+  compatible de Supabase Storage: mantiene claves y metadata de stock/piezas
+  privadas, no crea URLs públicas y conserva la entrega privada bajo
+  autorización de los servicios existentes.
 - El checkout ya usa Next.js 16.3.4: se retiraron Vinext, el Worker, Vite y el
   plugin de Sites. `db/index.ts` y `objectStore` construyen los adaptadores
   remotos sólo al atender una solicitud, por lo que un build no accede a
   secretos ni a datos comerciales.
 - El build de producción nativo pasó con Node 24 y todas las rutas de negocio
   quedaron dinámicas; falta probarlas contra un entorno privado que tenga las
-  credenciales reales de Supabase/R2 configuradas.
+  credenciales reales de Supabase (DB y Storage) configuradas.
 - Sin esas credenciales, el servidor Next responde `503 PERSISTENCE_UNAVAILABLE`
   para datos de negocio: no cae a fixtures ni expone una demostración como si
   fuera producción.
@@ -76,16 +85,18 @@ ZERNIO_API_BASE_URL=
 ANTHROPIC_API_KEY=
 
 SUPABASE_DB_URL=
-CLOUDFLARE_R2_ENDPOINT=
-CLOUDFLARE_R2_BUCKET=
-CLOUDFLARE_R2_ACCESS_KEY_ID=
-CLOUDFLARE_R2_SECRET_ACCESS_KEY=
+SUPABASE_STORAGE_ENDPOINT=
+SUPABASE_STORAGE_REGION=
+SUPABASE_STORAGE_BUCKET=
+SUPABASE_STORAGE_ACCESS_KEY_ID=
+SUPABASE_STORAGE_SECRET_ACCESS_KEY=
 ```
 
-Las credenciales R2 se crearán con el mínimo alcance necesario: Cloudflare
-documenta credenciales S3 con permisos por bucket, no una clave amplia de
-cuenta. `SUPABASE_DB_URL` es el connection string del pooler de Supabase con
-la contraseña percent-codificada.
+Las credenciales de Supabase Storage se crearán con el mínimo alcance
+necesario: Supabase documenta claves S3 generadas por proyecto (Settings >
+Storage > S3 Connection), no una clave amplia de cuenta. `SUPABASE_DB_URL` es
+el connection string del pooler de Supabase con la contraseña
+percent-codificada.
 
 ## Plan del corte de corrección
 

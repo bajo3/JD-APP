@@ -1,7 +1,8 @@
 /**
- * Adaptador R2 para funciones Node (por ejemplo, Vercel). R2 mantiene los
- * bytes; la autorización y el estado READY siguen siendo responsabilidad de
- * los servicios que llaman a ObjectStore.
+ * Adaptador de Supabase Storage (protocolo S3) para funciones Node (por
+ * ejemplo, Vercel). Supabase Storage mantiene los bytes; la autorización y el
+ * estado READY siguen siendo responsabilidad de los servicios que llaman a
+ * ObjectStore.
  */
 
 import {
@@ -27,45 +28,50 @@ const ALLOWED_STOCK_IMAGE_TYPES = new Set([
 
 type S3ClientLike = Pick<S3Client, "send">;
 
-export type R2RemoteConfig = Readonly<{
+export type SupabaseStorageRemoteConfig = Readonly<{
   endpoint: string;
+  region: string;
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
   client?: S3ClientLike;
 }>;
 
-export class RemoteR2Error extends Error {
-  readonly code: "R2_REMOTE_CONFIG_INVALID" | "R2_REMOTE_REQUEST_FAILED";
+export class RemoteSupabaseStorageError extends Error {
+  readonly code: "SUPABASE_STORAGE_REMOTE_CONFIG_INVALID" | "SUPABASE_STORAGE_REMOTE_REQUEST_FAILED";
 
-  constructor(code: RemoteR2Error["code"]) {
+  constructor(code: RemoteSupabaseStorageError["code"]) {
     super(
-      code === "R2_REMOTE_CONFIG_INVALID"
-        ? "La configuración de R2 remoto no es válida."
+      code === "SUPABASE_STORAGE_REMOTE_CONFIG_INVALID"
+        ? "La configuración de Supabase Storage remoto no es válida."
         : "El almacenamiento remoto no respondió correctamente.",
     );
-    this.name = "RemoteR2Error";
+    this.name = "RemoteSupabaseStorageError";
     this.code = code;
   }
 }
 
-export class RemoteR2ObjectStore implements ObjectStore {
+export class RemoteSupabaseStorageObjectStore implements ObjectStore {
   readonly #bucket: string;
   readonly #client: S3ClientLike;
 
-  constructor(config: R2RemoteConfig) {
+  constructor(config: SupabaseStorageRemoteConfig) {
     const endpoint = normalizedEndpoint(config.endpoint);
+    const region = config.region.trim();
     const bucket = config.bucket.trim();
     const accessKeyId = config.accessKeyId.trim();
     const secretAccessKey = config.secretAccessKey.trim();
-    if (!endpoint || !isBucketName(bucket) || !accessKeyId || !secretAccessKey) {
-      throw new RemoteR2Error("R2_REMOTE_CONFIG_INVALID");
+    if (!endpoint || !region || !isBucketName(bucket) || !accessKeyId || !secretAccessKey) {
+      throw new RemoteSupabaseStorageError("SUPABASE_STORAGE_REMOTE_CONFIG_INVALID");
     }
 
     this.#bucket = bucket;
     this.#client = config.client ?? new S3Client({
-      region: "auto",
+      region,
       endpoint,
+      // El endpoint S3 de Supabase Storage vive bajo /storage/v1/s3 y espera
+      // el bucket como primer segmento de ruta, no como subdominio.
+      forcePathStyle: true,
       credentials: { accessKeyId, secretAccessKey },
     });
   }
@@ -151,11 +157,11 @@ export class RemoteR2ObjectStore implements ObjectStore {
   }
 
   async deleteObject(key: string): Promise<void> {
-    if (!key.trim()) throw new RemoteR2Error("R2_REMOTE_CONFIG_INVALID");
+    if (!key.trim()) throw new RemoteSupabaseStorageError("SUPABASE_STORAGE_REMOTE_CONFIG_INVALID");
     try {
       await this.#client.send(new DeleteObjectCommand({ Bucket: this.#bucket, Key: key }));
     } catch {
-      throw new RemoteR2Error("R2_REMOTE_REQUEST_FAILED");
+      throw new RemoteSupabaseStorageError("SUPABASE_STORAGE_REMOTE_REQUEST_FAILED");
     }
   }
 
@@ -174,7 +180,7 @@ export class RemoteR2ObjectStore implements ObjectStore {
         Metadata: metadata,
       }));
     } catch {
-      throw new RemoteR2Error("R2_REMOTE_REQUEST_FAILED");
+      throw new RemoteSupabaseStorageError("SUPABASE_STORAGE_REMOTE_REQUEST_FAILED");
     }
   }
 
@@ -182,17 +188,17 @@ export class RemoteR2ObjectStore implements ObjectStore {
     try {
       const response = await this.#client.send(new GetObjectCommand({ Bucket: this.#bucket, Key: key }));
       const body = response.Body;
-      if (!isS3Body(body)) throw new RemoteR2Error("R2_REMOTE_REQUEST_FAILED");
-      return new RemoteR2ObjectBody(body);
+      if (!isS3Body(body)) throw new RemoteSupabaseStorageError("SUPABASE_STORAGE_REMOTE_REQUEST_FAILED");
+      return new RemoteSupabaseStorageObjectBody(body);
     } catch (error) {
       if (isMissingObject(error)) return null;
-      if (error instanceof RemoteR2Error) throw error;
-      throw new RemoteR2Error("R2_REMOTE_REQUEST_FAILED");
+      if (error instanceof RemoteSupabaseStorageError) throw error;
+      throw new RemoteSupabaseStorageError("SUPABASE_STORAGE_REMOTE_REQUEST_FAILED");
     }
   }
 }
 
-class RemoteR2ObjectBody implements R2ObjectBody {
+class RemoteSupabaseStorageObjectBody implements R2ObjectBody {
   #used = false;
   readonly #body: S3Body;
 
@@ -249,10 +255,13 @@ function isMissingObject(error: unknown): boolean {
   return candidate.name === "NoSuchKey" || candidate.name === "NotFound" || candidate.$metadata?.httpStatusCode === 404;
 }
 
+// El endpoint S3 de Supabase Storage incluye una ruta fija (/storage/v1/s3),
+// a diferencia de R2 que usa la raíz del host; se acepta cualquier ruta, sólo
+// se exige HTTPS y ausencia de credenciales/consulta embebidas en la URL.
 function normalizedEndpoint(value: string): string | null {
   try {
     const endpoint = new URL(value.trim());
-    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.pathname !== "/" || endpoint.search || endpoint.hash) {
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
       return null;
     }
     return endpoint.toString().replace(/\/$/, "");

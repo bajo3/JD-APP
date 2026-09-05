@@ -43,7 +43,7 @@ registerHooks({
 });
 
 const { MAX_MEDIA_IMAGE_BYTES, inspectStockImage } = await import("../lib/media/index.mjs");
-const { RemoteR2ObjectStore } = await import("../lib/data/r2-remote.ts");
+const { RemoteSupabaseStorageObjectStore } = await import("../lib/data/supabase-storage-remote.ts");
 const { publicVehicleMedia } = await import("../lib/server/vehicle-media.ts");
 const { adminAppraisalPhotoBytes } = await import("../lib/server/appraisal-media.ts");
 const { adminConsignmentPhotoBytes } = await import("../lib/server/consignment-media.ts");
@@ -93,10 +93,11 @@ test("the shared policy accepts exactly 4 MiB and rejects the following byte", a
   );
 });
 
-test("R2 adapters reject an over-limit declaration before sending bytes", async () => {
+test("Supabase Storage adapters reject an over-limit declaration before sending bytes", async () => {
   const commands = [];
-  const store = new RemoteR2ObjectStore({
-    endpoint: "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+  const store = new RemoteSupabaseStorageObjectStore({
+    endpoint: "https://abcdefghijklmnopqrst.storage.supabase.co/storage/v1/s3",
+    region: "us-west-2",
     bucket: "jda-uploads",
     accessKeyId: "test-access-key",
     secretAccessKey: "test-secret-key",
@@ -109,7 +110,7 @@ test("R2 adapters reject an over-limit declaration before sending bytes", async 
   assert.equal(commands.length, 0);
 });
 
-test("legacy over-limit metadata is rejected before any R2 read", async () => {
+test("legacy over-limit metadata is rejected before any remote read", async () => {
   let reads = 0;
   const objects = { getStockObject: async () => { reads += 1; return null; }, getPrivateObject: async () => { reads += 1; return null; } };
   const vehicle = await publicVehicleMedia(

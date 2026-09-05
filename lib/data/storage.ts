@@ -1,4 +1,4 @@
-import { RemoteR2ObjectStore } from "@/lib/data/r2-remote";
+import { RemoteSupabaseStorageObjectStore } from "@/lib/data/supabase-storage-remote";
 import { MAX_MEDIA_IMAGE_BYTES } from "@/lib/media/policy.mjs";
 
 // Only formats whose metadata the server strips before persisting; HEIC/AVIF
@@ -45,7 +45,7 @@ export interface ObjectStore {
   deleteObject(key: string): Promise<void>;
 }
 
-export class R2ObjectStore implements ObjectStore {
+export class SupabaseObjectStore implements ObjectStore {
   async putStockImage(input: {
     vehicleId: string;
     mediaId: string;
@@ -148,16 +148,17 @@ export class R2ObjectStore implements ObjectStore {
 
 // The app owns authorization and signed-delivery policy. This adapter only
 // persists private bytes; it never constructs a public URL for appraisal media.
-export const objectStore: ObjectStore = new R2ObjectStore();
+export const objectStore: ObjectStore = new SupabaseObjectStore();
 
-let remote: RemoteR2ObjectStore | undefined;
+let remote: RemoteSupabaseStorageObjectStore | undefined;
 
-function remoteStore(): RemoteR2ObjectStore {
-  remote ??= new RemoteR2ObjectStore({
-    endpoint: requiredEnvironment("CLOUDFLARE_R2_ENDPOINT"),
-    bucket: requiredEnvironment("CLOUDFLARE_R2_BUCKET"),
-    accessKeyId: requiredEnvironment("CLOUDFLARE_R2_ACCESS_KEY_ID"),
-    secretAccessKey: requiredEnvironment("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+function remoteStore(): RemoteSupabaseStorageObjectStore {
+  remote ??= new RemoteSupabaseStorageObjectStore({
+    endpoint: requiredEnvironment("SUPABASE_STORAGE_ENDPOINT"),
+    region: requiredEnvironment("SUPABASE_STORAGE_REGION"),
+    bucket: requiredEnvironment("SUPABASE_STORAGE_BUCKET"),
+    accessKeyId: requiredEnvironment("SUPABASE_STORAGE_ACCESS_KEY_ID"),
+    secretAccessKey: requiredEnvironment("SUPABASE_STORAGE_SECRET_ACCESS_KEY"),
   });
   return remote;
 }

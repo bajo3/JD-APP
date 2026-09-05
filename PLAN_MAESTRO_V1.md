@@ -117,7 +117,7 @@ flowchart TB
     API --> APP
     APP --> DOM["Dominio puro y motor determinista"]
     APP --> DB["Postgres (Supabase)"]
-    APP --> STORE["Cloudflare R2"]
+    APP --> STORE["Supabase Storage"]
     APP --> PORTS["Adaptadores: stock, CRM, WhatsApp, push y analítica"]
 ```
 
@@ -127,10 +127,11 @@ Decisiones:
 - Node.js como runtime del servidor.
 - Postgres en Supabase como fuente de verdad interna para la V1 (migrado desde
   Cloudflare D1 el 4 de septiembre de 2026, por decisión del usuario).
-- Cloudflare R2 como almacenamiento de imágenes y archivos; su propia
-  migración a Supabase Storage queda pendiente.
+- Supabase Storage como almacenamiento de imágenes y archivos (migrado desde
+  Cloudflare R2 el 5 de septiembre de 2026, por decisión del usuario).
 - GitHub `bajo3/JD-APP` → Vercel como único flujo de publicación; Next.js 16
-  usa Supabase por conexión Postgres directa y R2 privado por S3. Sites/Vinext
+  usa Supabase por conexión Postgres directa y Supabase Storage privado por
+  S3. Sites/Vinext
   fueron retirados del runtime por decisión del usuario; las puertas están en
   `MIGRACION_VERCEL.md`.
 - Tailwind CSS y componentes accesibles para la interfaz.
@@ -945,4 +946,4 @@ La app podrá agregar después notificaciones nativas, cámara guiada, JD Scan, 
 - [Expo — Monorepos](https://docs.expo.dev/guides/monorepos/)
 - [Supabase](https://supabase.com/docs)
 - [postgres.js](https://github.com/porsager/postgres)
-- [Cloudflare R2](https://developers.cloudflare.com/r2/)
+- [Supabase Storage — protocolo S3](https://supabase.com/docs/guides/storage/s3/authentication)

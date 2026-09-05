@@ -1,9 +1,9 @@
 # Jesús Díaz Automotores
 
 Web/PWA mobile-first para Jesús Díaz Automotores (Tandil), construida sobre
-Next App Router. El runtime corre en Vercel; la base de datos es Postgres en
-Supabase (`SUPABASE_DB_URL`) y las fotos siguen en Cloudflare R2, compatible
-S3, mientras se completa su migración a Supabase Storage.
+Next App Router. El runtime corre en Vercel; tanto la base de datos (Postgres,
+`SUPABASE_DB_URL`) como las fotos (Supabase Storage, `SUPABASE_STORAGE_*`,
+compatible S3) viven en el mismo proyecto de Supabase.
 El contrato y sus puertas están en [MIGRACION_VERCEL.md](MIGRACION_VERCEL.md). La V1 incluye catálogo demo, ficha de
 vehículos, tasación preliminar, buscador “¿Qué auto me llevo?”, Oferta JD del
 Día, contacto/WhatsApp y un panel operativo protegido. La consignación
@@ -77,7 +77,7 @@ completa de publicables y de rechazadas.
 
 ```bash
 npm run stock:sync -- --dry-run                    # imprime el resultado sin escribir
-npm run stock:sync -- --confirm-remote             # publica en Supabase y en R2
+npm run stock:sync -- --confirm-remote             # publica en Supabase (DB y Storage)
 ```
 
 `--photos <n>` cambia el tope de fotos por unidad (12 por defecto, hasta 40);

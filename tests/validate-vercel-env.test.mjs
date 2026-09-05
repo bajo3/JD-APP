@@ -8,10 +8,11 @@ const required = {
   PANEL_ALLOWED_ACCOUNT_IDS: "00000000-0000-4000-8000-000000000001",
   NEXT_PUBLIC_SITE_URL: "https://jda.test",
   SUPABASE_DB_URL: "postgresql://postgres.abc123:secret@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
-  CLOUDFLARE_R2_ENDPOINT: "https://account-id-12345678.r2.cloudflarestorage.com",
-  CLOUDFLARE_R2_BUCKET: "jda-private",
-  CLOUDFLARE_R2_ACCESS_KEY_ID: "r2-access-key",
-  CLOUDFLARE_R2_SECRET_ACCESS_KEY: "r2-secret-key",
+  SUPABASE_STORAGE_ENDPOINT: "https://project-ref-12345678.storage.supabase.co/storage/v1/s3",
+  SUPABASE_STORAGE_REGION: "us-west-2",
+  SUPABASE_STORAGE_BUCKET: "jda-private",
+  SUPABASE_STORAGE_ACCESS_KEY_ID: "storage-access-key",
+  SUPABASE_STORAGE_SECRET_ACCESS_KEY: "storage-secret-key",
 };
 
 function run(overrides = {}) {

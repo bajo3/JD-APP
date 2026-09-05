@@ -52,7 +52,7 @@ const {
   publicVehicleMedia,
 } = await import("../lib/server/vehicle-media.ts");
 const { D1VehicleMediaRepository } = await import("../lib/data/vehicle-media-repository.ts");
-const { R2ObjectStore } = await import("../lib/data/storage.ts");
+const { SupabaseObjectStore } = await import("../lib/data/storage.ts");
 
 const VEHICLE_ID = "vehicle-1";
 const AT = new Date("2026-08-17T15:00:00.000Z");
@@ -315,7 +315,7 @@ test("media migration backfills distinct legacy hashes and keeps them fail-close
 
 test("R2 stock adapter rejects HEIC before accessing a bucket", async () => {
   await assert.rejects(
-    () => new R2ObjectStore().putStockImage({
+    () => new SupabaseObjectStore().putStockImage({
       vehicleId: VEHICLE_ID,
       mediaId: "media-heic",
       body: new Uint8Array([1]),

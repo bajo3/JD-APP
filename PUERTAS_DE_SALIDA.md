@@ -302,3 +302,35 @@ el 3 de septiembre (10 unidades) quedó en la D1 vieja y no se trasladó solo a
 Supabase — hoy la base tiene sólo el catálogo DEMO. Hace falta correr
 `npm run stock:sync -- --confirm-remote` de nuevo antes de considerar el
 catálogo real publicado (ver fila 1 de `DECISIONES_JDA.md`).
+
+## Migración de object storage a Supabase Storage — 5 de septiembre de 2026
+
+Por instrucción del usuario, el object storage se migró de Cloudflare R2 a
+Supabase Storage, vía su protocolo S3 compatible, en el mismo proyecto que ya
+aloja `SUPABASE_DB_URL`.
+
+Alcance de esta migración:
+
+- `lib/data/supabase-storage-remote.ts` reemplaza a `lib/data/r2-remote.ts`:
+  mismo contrato `ObjectStore` (`putStockImage/putPrivateAppraisalImage/
+  putPrivateConsignmentImage/getStockObject/getPrivateObject/deleteObject`)
+  que ya consumían los servicios de `lib/server/*-media.ts`, así que ese
+  código de negocio no se reescribió; sólo cambió la construcción del cliente
+  S3 (`region` explícita en vez de `"auto"`, `forcePathStyle: true` porque el
+  endpoint de Supabase Storage vive bajo `/storage/v1/s3` en vez de la raíz
+  del host) y las cinco variables de entorno (`SUPABASE_STORAGE_ENDPOINT`,
+  `SUPABASE_STORAGE_REGION`, `SUPABASE_STORAGE_BUCKET`,
+  `SUPABASE_STORAGE_ACCESS_KEY_ID`, `SUPABASE_STORAGE_SECRET_ACCESS_KEY`);
+- `lib/data/storage.ts` renombra su clase concreta de `R2ObjectStore` a
+  `SupabaseObjectStore`; `scripts/stock-sync.mjs` se adaptó al mismo cliente
+  y variables nuevas;
+- bucket creado por el usuario en el dashboard de Supabase: `jda-media`
+  (privado);
+- `scripts/validate-vercel-env.mjs` exige las cinco variables de Supabase
+  Storage en vez de las cuatro de Cloudflare R2.
+
+Pendiente, sin efecto en este cambio: no se migraron bytes existentes porque
+el bucket de R2 no tenía fotos reales publicadas todavía (el catálogo vigente
+es DEMO; ver la migración de persistencia arriba y la fila 1 de
+`DECISIONES_JDA.md`). Cuando se corra `npm run stock:sync -- --confirm-remote`
+las fotos reales se escribirán directamente en Supabase Storage.

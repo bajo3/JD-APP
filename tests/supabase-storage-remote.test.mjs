@@ -29,10 +29,11 @@ registerHooks({
 });
 
 const { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } = await import("@aws-sdk/client-s3");
-const { RemoteR2Error, RemoteR2ObjectStore } = await import("../lib/data/r2-remote.ts");
+const { RemoteSupabaseStorageError, RemoteSupabaseStorageObjectStore } = await import("../lib/data/supabase-storage-remote.ts");
 
 const config = {
-  endpoint: "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+  endpoint: "https://abcdefghijklmnopqrst.storage.supabase.co/storage/v1/s3",
+  region: "us-west-2",
   bucket: "jda-uploads",
   accessKeyId: "test-access-key",
   secretAccessKey: "never-expose-this-test-secret",
@@ -42,9 +43,9 @@ function mockClient(send) {
   return { send };
 }
 
-test("remote R2 keeps stock and private metadata while never making a URL", async () => {
+test("Supabase Storage remoto keeps stock and private metadata while never making a URL", async () => {
   const commands = [];
-  const store = new RemoteR2ObjectStore({
+  const store = new RemoteSupabaseStorageObjectStore({
     ...config,
     client: mockClient(async (command) => { commands.push(command); return {}; }),
   });
@@ -69,10 +70,10 @@ test("remote R2 keeps stock and private metadata while never making a URL", asyn
   assert.equal("ACL" in commands[1].input, false);
 });
 
-test("remote R2 returns private bytes only through the caller-authorized object API", async () => {
+test("Supabase Storage remoto returns private bytes only through the caller-authorized object API", async () => {
   const bytes = new TextEncoder().encode("private image bytes");
   const stream = new Blob([bytes]).stream();
-  const store = new RemoteR2ObjectStore({
+  const store = new RemoteSupabaseStorageObjectStore({
     ...config,
     client: mockClient(async (command) => {
       assert.ok(command instanceof GetObjectCommand);
@@ -94,9 +95,9 @@ test("remote R2 returns private bytes only through the caller-authorized object 
   assert.throws(() => store.getPrivateObject("public/stock/vehicle-1/media-1"), /PRIVATE_OBJECT_KEY_REQUIRED/);
 });
 
-test("remote R2 returns null for a missing object and deletes through the same bucket", async () => {
+test("Supabase Storage remoto returns null for a missing object and deletes through the same bucket", async () => {
   const commands = [];
-  const store = new RemoteR2ObjectStore({
+  const store = new RemoteSupabaseStorageObjectStore({
     ...config,
     client: mockClient(async (command) => {
       commands.push(command);
@@ -111,22 +112,26 @@ test("remote R2 returns null for a missing object and deletes through the same b
   assert.deepEqual(commands[1].input, { Bucket: "jda-uploads", Key: "private/appraisals/appraisal-1/media-2" });
 });
 
-test("remote R2 fails closed without disclosing the secret or object key", async () => {
+test("Supabase Storage remoto fails closed without disclosing the secret or object key", async () => {
   const key = "private/appraisals/appraisal-1/media-2";
-  const store = new RemoteR2ObjectStore({
+  const store = new RemoteSupabaseStorageObjectStore({
     ...config,
     client: mockClient(async () => { throw new Error("provider detail"); }),
   });
 
   await assert.rejects(store.getPrivateObject(key), (error) => {
-    assert.ok(error instanceof RemoteR2Error);
-    assert.equal(error.code, "R2_REMOTE_REQUEST_FAILED");
+    assert.ok(error instanceof RemoteSupabaseStorageError);
+    assert.equal(error.code, "SUPABASE_STORAGE_REMOTE_REQUEST_FAILED");
     assert.equal(error.message.includes(config.secretAccessKey), false);
     assert.equal(error.message.includes(key), false);
     return true;
   });
   assert.throws(
-    () => new RemoteR2ObjectStore({ ...config, endpoint: "http://not-secure.example", client: mockClient(async () => ({})) }),
-    (error) => error instanceof RemoteR2Error && error.code === "R2_REMOTE_CONFIG_INVALID",
+    () => new RemoteSupabaseStorageObjectStore({ ...config, endpoint: "http://not-secure.example", client: mockClient(async () => ({})) }),
+    (error) => error instanceof RemoteSupabaseStorageError && error.code === "SUPABASE_STORAGE_REMOTE_CONFIG_INVALID",
+  );
+  assert.throws(
+    () => new RemoteSupabaseStorageObjectStore({ ...config, region: "", client: mockClient(async () => ({})) }),
+    (error) => error instanceof RemoteSupabaseStorageError && error.code === "SUPABASE_STORAGE_REMOTE_CONFIG_INVALID",
   );
 });
