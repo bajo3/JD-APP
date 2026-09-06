@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { contactHref, contactLabel } from "./_components/contact";
 import { DealerJsonLd } from "./_components/JsonLd";
 import { HeroVehicleRotator, type HeroVehiclePhoto } from "./_components/HeroVehicleRotator";
 import { OfferCountdown } from "./_components/OfferCountdown";
 import { VehicleCard } from "./_components/VehicleCard";
 import { getPublicHomeData } from "@/lib/server/public-data";
+import "./home-actions.css";
 
 export const dynamic = "force-dynamic";
 
@@ -48,19 +50,12 @@ export default async function Home() {
           <h1>¿Qué auto te podés llevar <em>hoy?</em></h1>
           <p className="hero-subtitle">Encontrá el vehículo que te acompaña en tu próximo destino.</p>
           <div className="search-card">
-            <label>
-              Estoy buscando
-              <select defaultValue="Usado"><option>Usado</option><option>Utilitario</option></select>
-            </label>
-            <label>
-              Presupuesto
-              <select defaultValue="Quiero calcular"><option>Quiero calcular</option><option>Prefiero consultar</option></select>
-            </label>
-            <label>
-              Financiación
-              <select defaultValue="Me interesa financiar"><option>Me interesa financiar</option><option>Pago sin financiación</option></select>
-            </label>
-            <a className="primary-button" href="/que-auto-me-llevo">Calcular operación <span>→</span></a>
+            <div className="home-action-intro"><span>¿Qué necesitás resolver?</span><strong>Elegí un próximo paso</strong></div>
+            <div className="home-actions">
+              <Link href="/stock"><span>01</span><strong>Ver catálogo</strong><small>Explorá unidades publicadas</small><b>→</b></Link>
+              <Link href="/que-auto-me-llevo"><span>02</span><strong>Calcular qué auto llevarte</strong><small>Usado + efectivo + cuota</small><b>→</b></Link>
+              <Link href="/tasar-mi-usado"><span>03</span><strong>Tasar mi usado</strong><small>Prepará tu consulta</small><b>→</b></Link>
+            </div>
           </div>
           <p className="detail-meta">{data.sourceLabel}. La disponibilidad se confirma antes de avanzar.</p>
         </div>
