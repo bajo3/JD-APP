@@ -35,6 +35,7 @@ export default async function Home() {
         <div className="location">
           <span className="pin">⌖</span> {profile?.city ?? "Ubicación a confirmar"}
         </div>
+        <a className="header-account-link" href="/cuenta">Mi cuenta</a>
         <a className="header-whatsapp" href={contactUrl}>
           {contactLabel(profile)} <span>↗</span>
         </a>
