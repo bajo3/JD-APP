@@ -313,7 +313,11 @@ export class D1VehicleMediaRepository {
       return { ok: false, reason: "not_found" };
     }
     const nextVehicleVersion = expectedVehicleVersion + 1;
-    const cases = orderedIds.map(() => "WHEN ? THEN ?").join(" ");
+    // Sin un ELSE ni ninguna otra rama tipada, Postgres no tiene de dónde
+    // inferir el tipo de esta CASE hecha enteramente de parámetros y la
+    // resuelve como text, lo que choca contra sort_order (integer). El cast
+    // explícito fuerza el tipo correcto; SQLite lo ignora sin problema.
+    const cases = orderedIds.map(() => "WHEN ? THEN ?::integer").join(" ");
     const binds = orderedIds.flatMap((id, index) => [id, index]);
     const placeholders = orderedIds.map(() => "?").join(",");
     const results = await this.d1.batch([

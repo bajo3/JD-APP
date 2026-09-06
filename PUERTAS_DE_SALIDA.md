@@ -425,3 +425,50 @@ contra fixtures desde antes de esta sesión (ver `AGENTS.md`); esta prueba es
 la primera evidencia de que también funcionan contra la infraestructura real.
 El punto 8 (dividir `ConsignmentForm.tsx`) ya estaba resuelto: 210 líneas,
 sin archivo de una sola línea.
+
+Extendido el mismo día a los otros dos flujos de fotos, por la misma razón —
+ninguno tenía todavía una prueba contra la Supabase y el Supabase Storage
+reales, sólo contra fixtures/`node:sqlite`:
+
+- `tests/e2e-appraisal-journey.test.mjs`: alta pública (vía el repositorio
+  Drizzle real, sin el bug de alias porque Drizzle mapea sus propias
+  columnas), tres fotos reales subidas/limpiadas/confirmadas, lectura admin
+  (lista y bytes) contra el bucket real, y revisión real
+  `SUBMITTED → IN_REVIEW → ESTIMATED → APPROVED`.
+- `tests/e2e-vehicle-media-journey.test.mjs`: dos fotos reales de stock
+  cargadas por el panel, servidas por la ruta pública real
+  (`publicVehicleMedia`/`findPublic()`, la misma que tenía el bug de alias),
+  condicional `If-None-Match` → 304, `set_primary`, `archive`, y la foto
+  archivada dejando de servirse.
+
+## Segundo bug real encontrado por las mismas pruebas — 5 de septiembre de 2026
+
+`tests/e2e-vehicle-media-journey.test.mjs` encontró un segundo bug, distinto
+al de los alias, en `D1VehicleMediaRepository.reorder()` (usado por
+`set_primary` y por reordenar fotos a mano en el panel): contra la Supabase
+real fallaba con `RemoteSupabaseError` genérico; la causa real, sólo visible
+con `error.cause`, era `PostgresError 42804: column "sort_order" is of type
+integer but expression is of type text`.
+
+Causa raíz: la sentencia arma un `CASE id WHEN ? THEN ? WHEN ? THEN ? END`
+enteramente con parámetros, sin ningún `ELSE` ni otra rama con tipo conocido
+que ancle el resultado. Sin esa ancla, Postgres no tiene de dónde inferir el
+tipo del `CASE` y lo resuelve como `text` por defecto — que choca contra
+`sort_order`, una columna `integer`. SQLite nunca tuvo este problema (tipado
+flexible); ninguna prueba contra fixtures ejercita esta consulta con SQL real
+(el mock de `reorder()` en `tests/api-vehicle-media.test.mjs` es un objeto de
+JS, no una consulta real), así que quedó sin detectar seis días.
+
+Corregido con un cast explícito (`THEN ?::integer`) en
+`lib/data/vehicle-media-repository.ts`; es sintaxis específica de Postgres,
+segura acá porque ninguna prueba corre esta consulta contra `node:sqlite`
+real. Verificado con un repro aislado (antes: `42804`; después: reordena
+correctamente) y con la suite e2e completa.
+
+Validación combinada de ambos bugs: `npm test` (424 pruebas verdes, 11
+omitidas sin `SUPABASE_DB_URL`/`SUPABASE_STORAGE_*`), lint y `tsc --noEmit`
+limpios, y las cinco suites reales (`supabase-remote`,
+`e2e-commercial-journey`, `e2e-consignment-journey`,
+`e2e-appraisal-journey`, `e2e-vehicle-media-journey`) verdes en una corrida
+conjunta contra la Supabase y el Supabase Storage reales, sin objetos
+huérfanos en el bucket al terminar.
