@@ -35,7 +35,7 @@ export default async function PanelLayout({ children }: PanelLayoutProps) {
         <div className="flex items-center gap-3">
           <span
             aria-hidden="true"
-            className="grid size-9 place-items-center rounded-lg bg-[#e86636] text-sm font-black text-white"
+            className="grid size-9 place-items-center rounded-lg bg-[#e8369d] text-sm font-black text-white"
           >
             JD
           </span>

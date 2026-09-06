@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { contactHref, contactLabel } from "./_components/contact";
 import { DealerJsonLd } from "./_components/JsonLd";
+import { HeroVehicleRotator, type HeroVehiclePhoto } from "./_components/HeroVehicleRotator";
 import { OfferCountdown } from "./_components/OfferCountdown";
 import { VehicleCard } from "./_components/VehicleCard";
 import { getPublicHomeData } from "@/lib/server/public-data";
@@ -19,6 +20,10 @@ export default async function Home() {
   const offer = data.promotion;
   const featured = data.vehicles.slice(0, 3);
   const contactUrl = contactHref(profile);
+  const heroPhotos: HeroVehiclePhoto[] = data.vehicles
+    .filter((vehicle) => vehicle.image)
+    .slice(0, 5)
+    .map((vehicle) => ({ url: vehicle.image!.url, alt: vehicle.image!.alt }));
 
   return (
     <>
@@ -60,7 +65,11 @@ export default async function Home() {
         </div>
         <div className="hero-visual" aria-hidden="true">
           <div className="visual-glow" />
-          <div className="hero-car"><span className="car-window"/><span className="car-body"/><i/><i/></div>
+          {heroPhotos.length > 0 ? (
+            <HeroVehicleRotator photos={heroPhotos} />
+          ) : (
+            <div className="hero-car"><span className="car-window"/><span className="car-body"/><i/><i/></div>
+          )}
           <div className="visual-caption"><strong>Tu próximo auto</strong><span>está más cerca de lo que pensás.</span></div>
         </div>
       </section>
