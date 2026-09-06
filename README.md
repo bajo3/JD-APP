@@ -221,6 +221,24 @@ Rutas V1.1 opcionales (fuera de la navegación V1 hasta aprobación de JDA):
   carga de 256 bits, cinco fotos guiadas con lifecycle recuperable y revisión
   del equipo antes de ofrecer la unidad. `noindex`.
 
+## Catálogo y dashboard del cliente
+
+La portada conecta catálogo, cálculo de operación y tasación preliminar con
+acciones directas. El catálogo permite buscar por marca/modelo/año, elegir
+moneda y ordenar por año o precio. El orden por precio requiere una moneda:
+no mezcla pesos con dólares. Los filtros quedan en la URL y se conservan al
+recargar y al usar atrás/adelante.
+
+La cuenta reúne accesos a esos recorridos, consultas, favoritos y búsquedas
+guardadas. Datos, preferencias y contraseña se abren en secciones secundarias;
+los conteos de favoritos y búsquedas se actualizan al quitarlos. Las búsquedas
+anteriores abren el catálogo por marca; los otros criterios se muestran como
+referencia. Este corte no agrega creación de búsquedas desde el catálogo.
+
+La tasación sigue siendo preliminar, con revisión humana. El pedido de una
+cotización asistida por IA necesita primero las referencias de JDA y su
+vigencia (decisión #15); no se presenta como una capacidad automática activa.
+
 ## Cuenta del cliente
 
 La cuenta es **opcional por diseño**: el catálogo, la ficha, la tasación, el

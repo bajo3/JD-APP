@@ -1,5 +1,37 @@
 # Puertas de salida antes de producción
 
+## Corte de experiencia — 6 de septiembre de 2026
+
+Portada con acciones funcionales; catálogo con búsqueda, moneda, orden y
+filtros en URL; dashboard con accesos, favoritos y formularios secundarios.
+Se conservan APIs, reglas de dinero, autorización, metadata y almacenamiento.
+
+Validación de este corte:
+
+- `npm test`: build de producción y 424 pruebas verdes, 12 omitidas por
+  condiciones de entorno; `npm run lint` y `npx tsc --noEmit` verdes.
+- 25 pruebas focalizadas de consignación verdes. `db:generate` informa sin
+  cambios sobre las 36 tablas del esquema Postgres.
+- 10 pruebas contra Supabase real: adaptador SQL, transacciones, simulación
+  congelada, embudo y consignación con cinco fotos privadas en Storage.
+  Las pruebas transaccionales revierten y los objetos temporales se limpian.
+- Restore drill real: 36 tablas con iguales conteos. El primer intento
+  falló por respuesta remota; el segundo completó. Este control sigue sin
+  certificar igualdad de contenido ni restauración de bytes.
+- Navegador sobre `next start`, Supabase DB/Storage remotos: catálogo con
+  búsqueda vacía y recuperación con atrás, moneda conservada al recargar,
+  detalle con fotos, alta de cuenta sintética, favorito agregado desde ficha
+  y quitado en cuenta con contador actualizado; preferencias guardadas y
+  recuperadas al recargar; error de validación conserva el formulario;
+  estado de guardado deshabilita botones. Sin errores de navegador observados.
+- Portada, catálogo y cuenta a 320 px sin overflow horizontal; controles
+  nuevos y summaries de al menos 44 px. Inspección visual en escritorio.
+
+Esto verifica Next local con persistencia remota, **no un despliegue Vercel**.
+La publicación privada y los datos comerciales siguen sujetos a las puertas
+de `MIGRACION_VERCEL.md`. La cotización automática por IA no está habilitada;
+la fuente de referencias continúa pendiente en `DECISIONES_JDA.md` #15.
+
 Estado de las trece condiciones que el plan maestro exige para publicar la V1.
 Cada una dice qué resuelve el código y qué falta de parte del negocio. Lo que
 depende de una decisión de JDA no se marca como cumplido aunque el código ya

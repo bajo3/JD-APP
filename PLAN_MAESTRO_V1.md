@@ -198,7 +198,7 @@ permanece visible; la Oferta JD se alcanza desde la portada y su propia ruta.
 
 | Ruta | Objetivo y contenido principal |
 |---|---|
-| `/` | Propuesta central, formulario corto, oferta vigente, destacados y contacto |
+| `/` | Propuesta central, accesos a catálogo/simulación/tasación, oferta vigente, destacados y contacto |
 | `/stock` | Catálogo, filtros, orden, disponibilidad y cards |
 | `/autos/[slug]` | Galería, datos, precio, oferta, disponibilidad y CTA de operación |
 | `/tasar-mi-usado` | Formulario por pasos y carga de fotos |

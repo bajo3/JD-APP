@@ -29,6 +29,13 @@ Responsables de referencia: **JDA** = Jesús Díaz (decisión comercial),
 
 ## Regla de uso
 
+Pedido de experiencia del 6 de septiembre de 2026: dashboard de cliente,
+catálogo, cálculo de crédito y cotización asistida por IA. Este corte mejora
+los tres accesos y las superficies existentes. Para habilitar la cotización
+automática, JDA debe responder la fila 15: entregar la tabla o identificar
+la fuente autorizada de valores, su vigencia y quién aprueba los rangos.
+Hasta entonces se conserva la tasación preliminar con revisión humana.
+
 - Un dato sólo pasa a "confirmado" con evidencia directa de JDA registrada en
   este archivo (fecha y medio).
 - Sin confirmación, el software muestra el estado honesto (DEMO, pendiente o
