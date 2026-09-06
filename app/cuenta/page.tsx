@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "../_components/AccountActions";
 import { AccountDashboard } from "../_components/AccountDashboard";
 import { PublicShell } from "../_components/PublicShell";
 import { readAccountDashboard } from "@/lib/server/account-api";
+import "./dashboard.css";
 
 export const dynamic = "force-dynamic";
 
@@ -43,20 +45,38 @@ export default async function AccountPage() {
   return (
     <PublicShell>
       <main id="contenido" className="public-page account-page">
-        <div className="form-intro">
+        <div className="account-welcome">
           <p className="eyebrow">TU CUENTA</p>
           <h1>Hola, {account.name.split(" ")[0]}</h1>
-          <p>Acá queda lo que guardaste y lo que ya consultaste con nosotros.</p>
+          <p>Encontrá rápido lo que guardaste y seguí tu próxima consulta con nosotros.</p>
           <div className="account-logout"><LogoutButton /></div>
         </div>
 
-        <section className="account-card" aria-labelledby="actividad">
-          <h2 id="actividad">Tus consultas</h2>
+        <nav className="account-quick-actions" aria-label="Acciones principales">
+          <Link className="account-quick-action" href="/stock">
+            <span>Explorar</span>
+            <strong>Ver catálogo</strong>
+            <em aria-hidden="true">↗</em>
+          </Link>
+          <Link className="account-quick-action" href="/que-auto-me-llevo">
+            <span>Orientarte</span>
+            <strong>Calcular crédito</strong>
+            <em aria-hidden="true">↗</em>
+          </Link>
+          <Link className="account-quick-action" href="/tasar-mi-usado">
+            <span>Empezar</span>
+            <strong>Tasación preliminar</strong>
+            <em aria-hidden="true">↗</em>
+          </Link>
+        </nav>
+
+        <section className="account-card account-activity" aria-labelledby="actividad">
+          <h2 id="actividad">Tus consultas <span className="account-count">{activity.appraisals.length + activity.simulations.length}</span></h2>
           {!account.leadId ? (
             <p className="detail-meta">
               Todavía no vinculamos tu cuenta con una consulta. Cuando pidas una
               tasación o guardes una simulación, las vas a ver acá.{" "}
-              <a href="/tasar-mi-usado">Pedir una tasación</a>.
+              <Link href="/tasar-mi-usado">Pedir una tasación</Link>.
             </p>
           ) : null}
 
@@ -110,6 +130,9 @@ export default async function AccountPage() {
                 vence en la fecha que informa su pantalla.
               </p>
             </>
+          ) : null}
+          {account.leadId && activity.appraisals.length === 0 && activity.simulations.length === 0 ? (
+            <p className="detail-meta">Todavía no hay operaciones vinculadas para mostrar. Tus próximas tasaciones y simulaciones van a aparecer acá.</p>
           ) : null}
         </section>
 
