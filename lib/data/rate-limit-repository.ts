@@ -24,9 +24,13 @@ export class D1RateLimitRepository {
   }): Promise<RateLimitDecision> {
     const row = await this.d1
       .prepare(
-        `INSERT INTO rate_limit_window (key, resource, expires_at, hits)
+        // Postgres considera ambigua una referencia a "hits" sin calificar
+        // dentro de ON CONFLICT DO UPDATE SET cuando el valor depende de la
+        // fila existente (a diferencia de excluded.columna, que nunca es
+        // ambiguo); el alias de tabla lo saca de duda.
+        `INSERT INTO rate_limit_window AS w (key, resource, expires_at, hits)
          VALUES (?, ?, ?, 1)
-         ON CONFLICT(key) DO UPDATE SET hits = hits + 1
+         ON CONFLICT(key) DO UPDATE SET hits = w.hits + 1
          RETURNING hits`,
       )
       .bind(input.key, input.resource, input.expiresAt)

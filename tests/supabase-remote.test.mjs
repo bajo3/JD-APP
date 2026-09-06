@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { registerHooks, stripTypeScriptTypes } from "node:module";
-import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier.startsWith("@/")) {
+      const relative = specifier.slice(2);
+      return {
+        url: pathToFileURL(resolve(
+          projectRoot,
+          specifier === "@/db" ? "db/index.ts" : relative.endsWith(".mjs") ? relative : `${relative}.ts`,
+        )).href,
+        shortCircuit: true,
+      };
+    }
     if ((specifier.startsWith("./") || specifier.startsWith("../")) && !/\.[cm]?[jt]s$/.test(specifier)) {
       return nextResolve(`${specifier}.ts`, context);
     }
@@ -27,6 +39,7 @@ registerHooks({
 });
 
 const { SupabaseD1Database, RemoteSupabaseError } = await import("../db/supabase-remote.ts");
+const { D1RateLimitRepository } = await import("../lib/data/rate-limit-repository.ts");
 
 const connectionString = process.env.SUPABASE_DB_URL;
 const skip = !connectionString;
@@ -130,4 +143,25 @@ suite("una configuración vacía falla cerrado sin conectar", () => {
     () => new SupabaseD1Database({ connectionString: "" }),
     (error) => error instanceof RemoteSupabaseError && error.code === "SUPABASE_REMOTE_CONFIG_INVALID",
   );
+});
+
+// Encontrado el 2026-09-06 al crear una cuenta real: Postgres considera
+// ambigua una referencia a "hits" sin calificar dentro de ON CONFLICT DO
+// UPDATE SET cuando el valor depende de la fila existente (a diferencia de
+// excluded.columna, que nunca es ambiguo). SQLite nunca tuvo este problema,
+// así que tests/rate-limit.test.mjs (contra fixtures) no lo detectó.
+suite("el contador de rate limit incrementa contra Postgres real sin ambigüedad de columna", async () => {
+  const database = new SupabaseD1Database({ connectionString });
+  const repository = new D1RateLimitRepository(database);
+  const key = `t_rate_${crypto.randomUUID().replace(/-/g, "")}`;
+  try {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const first = await repository.hit({ key, resource: "public.account", expiresAt });
+    assert.deepEqual(first, { hits: 1 });
+    const second = await repository.hit({ key, resource: "public.account", expiresAt });
+    assert.deepEqual(second, { hits: 2 });
+  } finally {
+    await database.exec(`DELETE FROM rate_limit_window WHERE key = '${key}'`);
+    await database.close();
+  }
 });
