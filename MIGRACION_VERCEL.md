@@ -83,6 +83,9 @@ ZERNIO_WEBHOOK_SECRET=
 ZERNIO_API_KEY=
 ZERNIO_API_BASE_URL=
 ANTHROPIC_API_KEY=
+MERCADOLIBRE_MARKET_APPRAISAL_ENABLED=
+MERCADOLIBRE_MARKET_USE_APPROVED=
+MERCADOLIBRE_ACCESS_TOKEN=
 
 SUPABASE_DB_URL=
 SUPABASE_STORAGE_ENDPOINT=
@@ -97,6 +100,11 @@ necesario: Supabase documenta claves S3 generadas por proyecto (Settings >
 Storage > S3 Connection), no una clave amplia de cuenta. `SUPABASE_DB_URL` es
 el connection string del pooler de Supabase con la contraseña
 percent-codificada.
+
+La referencia interna de mercado requiere sus tres variables de MercadoLibre
+juntas, permiso de uso confirmado y un preview privado; mientras cualquiera
+falte no genera tráfico al proveedor. No habilita tasaciones ni reglas
+comerciales automáticamente.
 
 ## Plan del corte de corrección
 

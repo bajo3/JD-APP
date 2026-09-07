@@ -11,6 +11,7 @@ export default async function ValuationsPage() {
   return <PanelShell title="Tasaciones" subtitle="Revisión humana, rango, certeza y vigencia.">
     <DemoNotice isDemo={overview.isDemo} />
     <section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">TARIFARIO</p><h2>Referencias de permuta</h2><p className="panel-muted">Sólo una versión publicada y vigente puede dar un rango preliminar por WhatsApp.</p></div><Link className="panel-action panel-primary" href="/panel/tasaciones/referencias">Administrar referencias</Link></div></section>
+    <section className="panel-card"><div className="panel-card-head"><div><p className="panel-kicker">REFERENCIA INTERNA</p><h2>Precios publicados de mercado</h2><p className="panel-muted">Fuente externa sólo para revisión humana; no publica ni cambia el tarifario.</p></div><Link className="panel-action" href="/panel/tasaciones/mercado">Consultar mercado</Link></div></section>
     <AdminResourceForm resource="appraisal" records={records} />
     <section className="panel-card">
       <h2>Solicitudes</h2>
