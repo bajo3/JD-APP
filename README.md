@@ -239,6 +239,26 @@ La tasación sigue siendo preliminar, con revisión humana. El pedido de una
 cotización asistida por IA necesita primero las referencias de JDA y su
 vigencia (decisión #15); no se presenta como una capacidad automática activa.
 
+## Asesor dentro de la app
+
+`/asesor` abre una conversación orientativa sin registro. El asistente consulta
+el catálogo y el perfil comercial públicos, devuelve enlaces a las fichas y
+orienta hacia los flujos de financiación, tasación y contacto. El historial
+permanece sólo en memoria mientras está abierta la pantalla; no se guarda en
+la cuenta. La consulta se procesa con Anthropic cuando está configurado.
+
+Para activar las respuestas, configurar `ANTHROPIC_API_KEY` en el entorno
+ignorado o en Vercel. `WEB_ADVISOR_MODEL` es opcional y permite seleccionar
+el modelo del chat web; por defecto utiliza el del asesor existente.
+Sin clave el endpoint devuelve 503 y la interfaz ofrece reintentar o continuar
+por los recorridos habituales. No hay respuestas de demostración simuladas
+en el producto. El límite `RATE_LIMIT_PUBLIC_WEB_ADVISOR` es 12/10 minutos
+por IP por defecto, persistido en Supabase.
+
+Este chat no envía mensajes de WhatsApp, crea oportunidades en el CRM ni
+confirma operaciones. Su contrato y las pruebas pendientes con proveedor real
+están en [PLAN_ASESOR_WEB.md](PLAN_ASESOR_WEB.md).
+
 ## Cuenta del cliente
 
 La cuenta es **opcional por diseño**: el catálogo, la ficha, la tasación, el

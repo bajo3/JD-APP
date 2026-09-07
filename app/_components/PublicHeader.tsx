@@ -12,6 +12,7 @@ export function PublicHeader({ profile }: { profile: PublicProfileView | null })
       <nav className="public-nav" aria-label="Navegación principal">
         <Link href="/stock">Stock</Link>
         <Link href="/tasar-mi-usado">Tasá tu usado</Link>
+        <Link href="/asesor">Asesor JD</Link>
         <Link href="/contacto">Contacto</Link>
         <Link href="/cuenta">Mi cuenta</Link>
       </nav>

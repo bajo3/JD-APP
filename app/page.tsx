@@ -37,6 +37,7 @@ export default async function Home() {
         <div className="location">
           <span className="pin">⌖</span> {profile?.city ?? "Ubicación a confirmar"}
         </div>
+        <a className="header-account-link" href="/asesor">Asesor JD</a>
         <a className="header-account-link" href="/cuenta">Mi cuenta</a>
         <a className="header-whatsapp" href={contactUrl}>
           {contactLabel(profile)} <span>↗</span>
@@ -51,7 +52,8 @@ export default async function Home() {
           <p className="hero-subtitle">Encontrá el vehículo que te acompaña en tu próximo destino.</p>
           <div className="search-card">
             <div className="home-action-intro"><span>¿Qué necesitás resolver?</span><strong>Elegí un próximo paso</strong></div>
-            <div className="home-actions">
+          <div className="home-actions">
+              <Link href="/asesor"><span>00</span><strong>Hablar con Asesor JD</strong><small>Orientación para tu próxima consulta</small><b>→</b></Link>
               <Link href="/stock"><span>01</span><strong>Ver catálogo</strong><small>Explorá unidades publicadas</small><b>→</b></Link>
               <Link href="/que-auto-me-llevo"><span>02</span><strong>Calcular qué auto llevarte</strong><small>Usado + efectivo + cuota</small><b>→</b></Link>
               <Link href="/tasar-mi-usado"><span>03</span><strong>Tasar mi usado</strong><small>Prepará tu consulta</small><b>→</b></Link>

@@ -17,6 +17,7 @@ export const RATE_LIMIT_RESOURCES = [
   "public.account-register",
   "public.account-login",
   "public.passport-review",
+  "public.web-advisor",
 ] as const;
 
 export type RateLimitResource = (typeof RATE_LIMIT_RESOURCES)[number];
@@ -44,6 +45,7 @@ const DEFAULT_LIMITS: Readonly<Record<RateLimitResource, ResourceLimit>> = {
   "public.account-register": { limit: 5, windowMinutes: 60, env: "RATE_LIMIT_PUBLIC_ACCOUNT_REGISTER" },
   "public.account-login": { limit: 12, windowMinutes: 10, env: "RATE_LIMIT_PUBLIC_ACCOUNT_LOGIN" },
   "public.passport-review": { limit: 20, windowMinutes: 10, env: "RATE_LIMIT_PUBLIC_PASSPORT_REVIEW" },
+  "public.web-advisor": { limit: 12, windowMinutes: 10, env: "RATE_LIMIT_PUBLIC_WEB_ADVISOR" },
 };
 
 export type RateLimitRuntime = Readonly<{

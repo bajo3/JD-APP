@@ -68,6 +68,11 @@ export default async function AccountPage() {
             <strong>Tasación preliminar</strong>
             <em aria-hidden="true">↗</em>
           </Link>
+          <Link className="account-quick-action" href="/asesor">
+            <span>Conversar</span>
+            <strong>Hablar con Asesor JD</strong>
+            <em aria-hidden="true">↗</em>
+          </Link>
         </nav>
 
         <section className="account-card account-activity" aria-labelledby="actividad">
