@@ -204,6 +204,19 @@ test("firma ausente y firma incorrecta responden exactamente igual", async () =>
   assert.equal(count("inbox_message"), 0);
 });
 
+test("el evento de prueba firmado queda procesado y responde 200", async () => {
+  const { call, rows } = harness();
+  const response = await call({
+    id: "evt-webhook-test",
+    event: "webhook.test",
+    message: "Test webhook from Zernio",
+    timestamp: NOW.toISOString(),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { data: { outcome: "processed" } });
+  assert.equal(rows("SELECT status FROM channel_webhook_event")[0].status, "PROCESSED");
+});
+
 test("un mensaje entrante crea conversación, mensaje, lead y evento de lead", async () => {
   const { call, rows, count } = harness();
   const response = await call(messageReceived());
@@ -324,6 +337,24 @@ test("en Instagram el participante no es un teléfono y no se inventa uno", asyn
   assert.equal(count("lead"), 0);
   assert.equal(count("lead_event"), 0);
   assert.equal(count("inbox_message"), 1);
+});
+
+test("Facebook se normaliza como Messenger para coincidir con el panel", async () => {
+  const { database, call, rows } = harness();
+  database
+    .prepare(
+      `INSERT INTO channel_account (id, provider, platform, external_account_id, display_name, status)
+       VALUES ('acc-fb', 'ZERNIO', 'messenger', 'zernio-acc-fb', 'JDA Facebook', 'ACTIVE')`,
+    )
+    .run();
+  const response = await call(messageReceived({
+    id: "evt-fb",
+    account: { id: "zernio-acc-fb", accountId: "zernio-acc-fb", platform: "facebook", username: "jda" },
+    conversation: { ...messageReceived().conversation, id: "conv-fb", platform: "facebook", participantId: "fb-user-1" },
+    message: { ...messageReceived().message, id: "msg-fb", platform: "facebook" },
+  }));
+  assert.equal(response.status, 201);
+  assert.equal(rows("SELECT platform FROM inbox_conversation")[0].platform, "messenger");
 });
 
 test("un saliente marca la conversación por su lado y no toca el entrante", async () => {

@@ -518,3 +518,66 @@ test("listar cuentas devuelve las cargadas", async () => {
   assert.equal(body.data.length, 1);
   assert.equal(body.data[0].externalAccountId, "zernio-acc-1");
 });
+
+test("sincronizar cuentas Zernio es atómico, auditable e idempotente", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const command = {
+    idempotencyKey: "zernio-sync-stable",
+    requestHash: "hash-a",
+    profileId: "profile-1",
+    accounts: [{
+      id: "local-wa-1",
+      platform: "whatsapp",
+      externalAccountId: "remote-wa-1",
+      displayName: "JDA WhatsApp",
+      status: "ACTIVE",
+    }],
+    actor: { userId: "seller-1", email: "vendedor@jda.test" },
+    updatedAt: "2026-09-13T12:00:00.000Z",
+  };
+  const first = await repository.syncChannelAccounts(command);
+  const replay = await repository.syncChannelAccounts(command);
+  assert.deepEqual(first, { ok: true, replayed: false, synced: 1 });
+  assert.deepEqual(replay, { ok: true, replayed: true, synced: 1 });
+  const account = database.prepare("SELECT status, version FROM channel_account WHERE external_account_id = 'remote-wa-1'").get();
+  assert.equal(account.status, "ACTIVE");
+  assert.equal(account.version, 1);
+  const audit = database.prepare("SELECT resource_id, previous_version, next_version FROM admin_audit_log WHERE action = 'zernio.account.sync'").get();
+  assert.equal(audit.resource_id, "local-wa-1");
+  assert.equal(audit.previous_version, null);
+  assert.equal(audit.next_version, 1);
+
+  const update = await repository.syncChannelAccounts({
+    ...command,
+    idempotencyKey: "zernio-sync-update",
+    requestHash: "hash-update",
+    accounts: [{ ...command.accounts[0], id: "ignored-on-update", status: "PAUSED" }],
+  });
+  assert.deepEqual(update, { ok: true, replayed: false, synced: 1 });
+  const updatedAccount = database.prepare("SELECT id, status, version FROM channel_account WHERE external_account_id = 'remote-wa-1'").get();
+  assert.equal(updatedAccount.id, "local-wa-1");
+  assert.equal(updatedAccount.status, "PAUSED");
+  assert.equal(updatedAccount.version, 2);
+  const updateAudit = database.prepare("SELECT resource_id, previous_version, next_version FROM admin_audit_log WHERE action = 'zernio.account.sync' ORDER BY occurred_at DESC, rowid DESC LIMIT 1").get();
+  assert.equal(updateAudit.resource_id, "local-wa-1");
+  assert.equal(updateAudit.previous_version, 1);
+  assert.equal(updateAudit.next_version, 2);
+});
+
+test("la misma clave Zernio con otro comando devuelve conflicto sin escribir", async () => {
+  const database = seedDatabase();
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+  const base = {
+    idempotencyKey: "zernio-sync-conflict",
+    profileId: "profile-1",
+    accounts: [],
+    actor: { userId: "seller-1", email: "vendedor@jda.test" },
+    updatedAt: "2026-09-13T12:00:00.000Z",
+  };
+  assert.equal((await repository.syncChannelAccounts({ ...base, requestHash: "hash-a" })).ok, true);
+  assert.deepEqual(await repository.syncChannelAccounts({ ...base, requestHash: "hash-b" }), {
+    ok: false,
+    reason: "idempotency_conflict",
+  });
+});

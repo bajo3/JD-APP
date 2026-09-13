@@ -100,6 +100,10 @@ function leadName(participantName: string | null, platform: string): string {
   return `Contacto de ${platform}`;
 }
 
+function inboxPlatform(platform: string): string {
+  return platform.toLowerCase() === "facebook" ? "messenger" : platform.toLowerCase();
+}
+
 function jsonAttachments(message: Record<string, unknown>): string {
   const attachments = message.attachments;
   if (!Array.isArray(attachments) || attachments.length === 0) return "[]";
@@ -231,6 +235,17 @@ async function route(input: {
 }): Promise<Response> {
   const { payload, type, externalEventId, repository, newId, nowIso } = input;
 
+  if (type === "webhook.test") {
+    await repository.markEvent({
+      provider: ZERNIO_PROVIDER,
+      externalEventId,
+      status: "PROCESSED",
+      failureReason: null,
+      processedAt: nowIso,
+    });
+    return outcomeResponse("processed", 200);
+  }
+
   const deliveryStatus = DELIVERY_EVENTS[type];
   if (deliveryStatus) {
     const message = readObject(payload, "message");
@@ -280,10 +295,11 @@ async function route(input: {
     return ignore(repository, externalEventId, nowIso, "ACCOUNT_INACTIVE");
   }
 
-  const platform =
+  const platform = inboxPlatform(
     (account ? readString(account, "platform") : null) ??
     (conversation ? readString(conversation, "platform") : null) ??
-    channelAccount.platform;
+    channelAccount.platform,
+  );
 
   const rawMessage = readObject(payload, "message");
   const messageId = rawMessage ? readString(rawMessage, "id") : null;

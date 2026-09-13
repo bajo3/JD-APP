@@ -40,6 +40,7 @@ registerHooks({
 
 const { SupabaseD1Database, RemoteSupabaseError } = await import("../db/supabase-remote.ts");
 const { D1RateLimitRepository } = await import("../lib/data/rate-limit-repository.ts");
+const { D1ChannelInboxRepository } = await import("../lib/data/channel-inbox-repository.ts");
 
 const connectionString = process.env.SUPABASE_DB_URL;
 const skip = !connectionString;
@@ -134,6 +135,54 @@ suite("un batch es atómico: una sentencia que falla revierte todo el lote", asy
       assert.equal(row, null, "la primera sentencia del lote fallido no debería haber quedado escrita");
     });
   } finally {
+    await database.close();
+  }
+});
+
+suite("la sincronización Zernio conserva idempotencia y auditoría en Postgres real", async () => {
+  const database = new SupabaseD1Database({ connectionString });
+  const repository = new D1ChannelInboxRepository(database);
+  const suffix = crypto.randomUUID().replace(/-/g, "");
+  const externalAccountId = `t_zernio_account_${suffix}`;
+  const localId = `t_zernio_local_${suffix}`;
+  const firstKey = `t_zernio_sync_${suffix}`;
+  const secondKey = `t_zernio_update_${suffix}`;
+  const actorUserId = `t_zernio_actor_${suffix}`;
+  const base = {
+    profileId: `t_profile_${suffix}`,
+    accounts: [{
+      id: localId,
+      platform: "whatsapp",
+      externalAccountId,
+      displayName: "JDA prueba remota",
+      status: "ACTIVE",
+    }],
+    actor: { userId: actorUserId, email: "prueba-remota@jda.test" },
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    const first = await repository.syncChannelAccounts({ ...base, idempotencyKey: firstKey, requestHash: "hash-first" });
+    const replay = await repository.syncChannelAccounts({ ...base, idempotencyKey: firstKey, requestHash: "hash-first" });
+    const update = await repository.syncChannelAccounts({
+      ...base,
+      idempotencyKey: secondKey,
+      requestHash: "hash-update",
+      accounts: [{ ...base.accounts[0], id: `ignored_${suffix}`, status: "PAUSED" }],
+    });
+    assert.deepEqual(first, { ok: true, replayed: false, synced: 1 });
+    assert.deepEqual(replay, { ok: true, replayed: true, synced: 1 });
+    assert.deepEqual(update, { ok: true, replayed: false, synced: 1 });
+    const account = await database.prepare("SELECT id, status, version FROM channel_account WHERE external_account_id = ?").bind(externalAccountId).first();
+    assert.deepEqual(account, { id: localId, status: "PAUSED", version: 2 });
+    const audits = await database.prepare("SELECT previous_version, next_version FROM admin_audit_log WHERE actor_user_id = ? ORDER BY next_version").bind(actorUserId).all();
+    assert.deepEqual(audits.results, [
+      { previous_version: null, next_version: 1 },
+      { previous_version: 1, next_version: 2 },
+    ]);
+  } finally {
+    await database.prepare("DELETE FROM admin_audit_log WHERE actor_user_id = ?").bind(actorUserId).run();
+    await database.prepare("DELETE FROM admin_idempotency WHERE actor_user_id = ?").bind(actorUserId).run();
+    await database.prepare("DELETE FROM channel_account WHERE external_account_id = ?").bind(externalAccountId).run();
     await database.close();
   }
 });

@@ -1,8 +1,9 @@
 # CRM unificado y asesor conversacional (puente Zernio)
 
-**Estado:** plan. Nada de esto está implementado todavía. Este documento fija
-el alcance, el orden de construcción y —sobre todo— qué le tiene que pasar al
-negocio antes de que la primera línea sirva para algo.
+**Estado:** puente y panel de conexión implementados. El uso real sigue
+deshabilitado hasta que JDA cargue las credenciales de Zernio y autorice al
+menos una cuenta. Este documento fija el alcance operativo y las condiciones
+que todavía dependen del negocio.
 
 La candidata V1 ya tiene un CRM mínimo: `lead`, `lead_interest`, `lead_event`,
 `consent`, el panel `/panel/leads` con asignación y motivo de pérdida, y la
@@ -27,10 +28,14 @@ comparables**. Este plan agrega eso y nada más.
 
 ## El puente Zernio: qué permite realmente
 
-Leído de la documentación de la API el 2 de septiembre de 2026
-(`docs.zernio.com`). **No verificado todavía contra una cuenta real**: hoy
-`accounts_list` responde `No accounts connected`, así que nada de esto se
-probó de punta a punta.
+Revalidado contra la documentación de la API el 13 de septiembre de 2026
+(`docs.zernio.com`). **No verificado todavía contra una cuenta real**: el
+entorno de Vercel aún no tiene `ZERNIO_API_KEY` ni `ZERNIO_WEBHOOK_SECRET`.
+
+El panel `/panel/conversaciones` ya permite elegir un perfil, iniciar el OAuth
+oficial de WhatsApp, Instagram o Facebook, sincronizar sólo cuentas devueltas
+por Zernio y crear/probar el webhook firmado. No acepta IDs remotos ni secretos
+escritos a mano en el navegador.
 
 - **Inbox unificado** sobre WhatsApp Cloud API, Instagram DM, Messenger,
   Telegram y SMS. Es lo que hace posible el "todo llega al mismo panel" del

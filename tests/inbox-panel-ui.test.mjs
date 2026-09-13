@@ -98,13 +98,36 @@ test("la pantalla de conversaciones administra las cuentas del canal antes de li
   assert.match(source, /ChannelAccountForm/);
 });
 
-test("dar de alta una cuenta manda las cinco plataformas admitidas y una clave de idempotencia estable", async () => {
+test("el panel guía la conexión Zernio sin pedir claves ni IDs manuales", async () => {
   const source = await read("app/panel/_components/ChannelAccountForm.tsx");
-  for (const platform of ["whatsapp", "instagram", "messenger", "telegram", "sms"]) {
-    assert.match(source, new RegExp(`value="${platform}"`));
+  for (const platform of ["whatsapp", "instagram", "facebook"]) {
+    assert.match(source, new RegExp(`value: "${platform}"`));
   }
-  assert.match(source, /idempotencyKey\.current \?\?= crypto\.randomUUID\(\)/);
-  assert.match(source, /channel-accounts/);
+  assert.match(source, /idempotencyKeys\.current\[action\] \?\?= crypto\.randomUUID\(\)/);
+  assert.match(source, /\/api\/v1\/admin\/zernio/);
+  assert.match(source, /\/api\/v1\/admin\/zernio\/connect/);
+  assert.match(source, /\/api\/v1\/admin\/zernio\/sync/);
+  assert.match(source, /\/api\/v1\/admin\/zernio\/webhook/);
+  assert.doesNotMatch(source, /name="(?:apiKey|webhookSecret|externalAccountId|accountId)"/);
+  assert.doesNotMatch(source, /channel-accounts/);
+});
+
+test("el gestor conserva estado, OAuth server-side, callback seguro y reintento", async () => {
+  const source = await read("app/panel/_components/ChannelAccountForm.tsx");
+  assert.match(source, /fetch\("\/api\/v1\/admin\/zernio", \{ cache: "no-store" \}\)/);
+  assert.match(source, /window\.location\.searchParams|get\("zernio"\)/);
+  assert.match(source, /marker === "callback"/);
+  assert.match(source, /marker === "cancelled"/);
+  assert.match(source, /window\.history\.replaceState/);
+  assert.match(source, /sessionStorage\.setItem\("jda:zernio-profile"/);
+  assert.match(source, /sessionStorage\.getItem\("jda:zernio-profile"/);
+  assert.match(source, /window\.location\.assign\(parsedUrl\.href\)/);
+  assert.match(source, /role="status"/);
+  assert.match(source, /Reintentar/);
+  assert.match(source, /profileId: selectedProfileId/);
+  assert.match(source, /accountIds: selectedAccountIds/);
+  assert.match(source, /action: "ensure"|configureWebhook\("ensure"\)/);
+  assert.match(source, /action: "test"|configureWebhook\("test"\)/);
 });
 
 test("la ruta de cuentas exige sesión antes de crear o listar", async () => {

@@ -69,6 +69,25 @@ export type InboundIngestInput = Readonly<{
   occurredAt: string;
 }>;
 
+export type ChannelAccountSyncInput = Readonly<{
+  idempotencyKey: string;
+  requestHash: string;
+  profileId: string;
+  accounts: readonly Readonly<{
+    id: string;
+    platform: "whatsapp" | "instagram" | "messenger";
+    externalAccountId: string;
+    displayName: string;
+    status: "ACTIVE" | "PAUSED";
+  }>[];
+  actor: Readonly<{ userId: string; email: string }>;
+  updatedAt: string;
+}>;
+
+export type ChannelAccountSyncResult =
+  | Readonly<{ ok: true; replayed: boolean; synced: number }>
+  | Readonly<{ ok: false; reason: "idempotency_conflict" }>;
+
 /**
  * Bandeja unificada persistida en D1. Cada evento del puente entra una sola
  * vez —la clave es el identificador estable que manda el proveedor— y la
@@ -247,6 +266,171 @@ export class D1ChannelInboxRepository {
       )
       .first<{ id: string }>();
     return { id: String(row?.id ?? input.id) };
+  }
+
+  /**
+   * Importa cuentas verificadas contra Zernio en una única transacción con la
+   * clave de idempotencia y su auditoría. El llamador nunca puede elegir el
+   * nombre, plataforma o estado que llegan a este método: salen del proveedor.
+   */
+  async syncChannelAccounts(input: ChannelAccountSyncInput): Promise<ChannelAccountSyncResult> {
+    const replay = await this.d1
+      .prepare(
+        `SELECT request_hash
+           FROM admin_idempotency
+          WHERE scope = 'zernio.accounts.sync' AND idempotency_key = ?`,
+      )
+      .bind(input.idempotencyKey)
+      .first<{ request_hash: string }>();
+    if (replay) {
+      return replay.request_hash === input.requestHash
+        ? { ok: true, replayed: true, synced: input.accounts.length }
+        : { ok: false, reason: "idempotency_conflict" };
+    }
+
+    const claimId = crypto.randomUUID();
+    const statements: D1PreparedStatement[] = [
+      this.d1
+        .prepare(
+          `INSERT INTO admin_idempotency
+             (id, scope, idempotency_key, request_hash, resource_type, resource_id, actor_user_id)
+           VALUES (?, 'zernio.accounts.sync', ?, ?, 'zernio_profile', ?, ?)
+           ON CONFLICT(scope, idempotency_key) DO NOTHING`,
+        )
+        .bind(claimId, input.idempotencyKey, input.requestHash, input.profileId, input.actor.userId),
+    ];
+
+    for (const account of input.accounts) {
+      const auditId = crypto.randomUUID();
+      statements.push(
+        this.d1
+          .prepare(
+            `INSERT INTO channel_account
+               (id, provider, platform, external_account_id, display_name, status,
+                default_assignee, updated_at)
+             SELECT ?, 'ZERNIO', ?, ?, ?, ?, ?, ?
+              WHERE EXISTS (SELECT 1 FROM admin_idempotency WHERE id = ?)
+             ON CONFLICT(provider, external_account_id) DO UPDATE SET
+               platform = excluded.platform,
+               display_name = excluded.display_name,
+               status = excluded.status,
+               default_assignee = COALESCE(channel_account.default_assignee, excluded.default_assignee),
+               updated_at = excluded.updated_at,
+               version = channel_account.version + 1`,
+          )
+          .bind(
+            account.id,
+            account.platform,
+            account.externalAccountId,
+            account.displayName,
+            account.status,
+            input.actor.email,
+            input.updatedAt,
+            claimId,
+          ),
+        this.d1
+          .prepare(
+            `INSERT INTO admin_audit_log
+               (id, actor_user_id, actor_email, action, resource_type, resource_id,
+                previous_version, next_version, summary_json, occurred_at)
+             SELECT ?, ?, ?, 'zernio.account.sync', 'channel_account', id,
+                    CASE WHEN version > 1 THEN version - 1 ELSE NULL END,
+                    version, ?, ?
+               FROM channel_account
+              WHERE provider = 'ZERNIO' AND external_account_id = ? AND changes() > 0
+             ON CONFLICT(id) DO NOTHING`,
+          )
+          .bind(
+            auditId,
+            input.actor.userId,
+            input.actor.email,
+            JSON.stringify({ platform: account.platform, status: account.status }),
+            input.updatedAt,
+            account.externalAccountId,
+          ),
+      );
+    }
+
+    await this.d1.batch(statements);
+    const winner = await this.d1
+      .prepare(
+        `SELECT id, request_hash
+           FROM admin_idempotency
+          WHERE scope = 'zernio.accounts.sync' AND idempotency_key = ?`,
+      )
+      .bind(input.idempotencyKey)
+      .first<{ id: string; request_hash: string }>();
+    if (!winner || winner.request_hash !== input.requestHash) {
+      return { ok: false, reason: "idempotency_conflict" };
+    }
+    return { ok: true, replayed: winner.id !== claimId, synced: input.accounts.length };
+  }
+
+  async findIntegrationAction(
+    scope: string,
+    idempotencyKey: string,
+  ): Promise<{ id: string; requestHash: string; resourceId: string } | null> {
+    const row = await this.d1
+      .prepare(
+        `SELECT id, request_hash, resource_id
+           FROM admin_idempotency
+          WHERE scope = ? AND idempotency_key = ?`,
+      )
+      .bind(scope, idempotencyKey)
+      .first<{ id: string; request_hash: string; resource_id: string }>();
+    return row ? { id: row.id, requestHash: row.request_hash, resourceId: row.resource_id } : null;
+  }
+
+  async recordIntegrationAction(input: {
+    scope: string;
+    idempotencyKey: string;
+    requestHash: string;
+    resourceId: string;
+    action: string;
+    actor: { userId: string; email: string };
+    occurredAt: string;
+    summary: Record<string, unknown>;
+  }): Promise<"created" | "replayed" | "conflict"> {
+    const claimId = crypto.randomUUID();
+    const auditId = crypto.randomUUID();
+    await this.d1.batch([
+      this.d1
+        .prepare(
+          `INSERT INTO admin_idempotency
+             (id, scope, idempotency_key, request_hash, resource_type, resource_id, actor_user_id)
+           VALUES (?, ?, ?, ?, 'zernio_webhook', ?, ?)
+           ON CONFLICT(scope, idempotency_key) DO NOTHING`,
+        )
+        .bind(
+          claimId,
+          input.scope,
+          input.idempotencyKey,
+          input.requestHash,
+          input.resourceId,
+          input.actor.userId,
+        ),
+      this.d1
+        .prepare(
+          `INSERT INTO admin_audit_log
+             (id, actor_user_id, actor_email, action, resource_type, resource_id,
+              previous_version, next_version, summary_json, occurred_at)
+           SELECT ?, ?, ?, ?, 'zernio_webhook', ?, NULL, 1, ?, ?
+            WHERE changes() > 0
+           ON CONFLICT(id) DO NOTHING`,
+        )
+        .bind(
+          auditId,
+          input.actor.userId,
+          input.actor.email,
+          input.action,
+          input.resourceId,
+          JSON.stringify(input.summary),
+          input.occurredAt,
+        ),
+    ]);
+    const winner = await this.findIntegrationAction(input.scope, input.idempotencyKey);
+    if (!winner || winner.requestHash !== input.requestHash) return "conflict";
+    return winner.id === claimId ? "created" : "replayed";
   }
 
   async findConversation(
@@ -957,4 +1141,7 @@ export type ChannelInboxRepositoryLike = Pick<
   | "findConversationQueueRow"
   | "listChannelAccounts"
   | "createChannelAccount"
+  | "syncChannelAccounts"
+  | "findIntegrationAction"
+  | "recordIntegrationAction"
 >;

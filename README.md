@@ -168,7 +168,8 @@ CONSIGNMENT_MEDIA_STALE_MINUTES=60
 # Sin él, POST /api/v1/webhooks/zernio responde 503 y no acepta ningún evento.
 ZERNIO_WEBHOOK_SECRET=
 
-# clave de API del puente para enviar. Sin ella no sale ningún mensaje.
+# clave API read-write del puente: conexión OAuth, cuentas, webhook y envío.
+# Debe existir sólo en Vercel/archivos de entorno ignorados.
 ZERNIO_API_KEY=
 # opcional; por defecto https://zernio.com/api
 ZERNIO_API_BASE_URL=
