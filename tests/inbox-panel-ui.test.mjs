@@ -96,6 +96,8 @@ test("la pantalla de conversaciones administra las cuentas del canal antes de li
   const queueSection = source.indexOf("Conversaciones abiertas");
   assert.ok(accountsSection >= 0 && accountsSection < queueSection);
   assert.match(source, /ChannelAccountForm/);
+  assert.match(source, /PanelAuthenticationRequired/);
+  assert.match(source, /PanelAccessError/);
 });
 
 test("el panel guía la conexión Zernio sin pedir claves ni IDs manuales", async () => {

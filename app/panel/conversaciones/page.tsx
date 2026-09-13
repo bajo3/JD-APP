@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getChannelAccounts, getConversationQueue } from "@/lib/server/inbox-panel-data";
+import { PanelAccessError, PanelAuthenticationRequired } from "@/lib/server/panel-auth";
 import { ChannelAccountForm } from "../_components/ChannelAccountForm";
 import { ConversationAssignButton } from "../_components/ConversationAssignButton";
 import { PanelShell } from "../_components/PanelShell";
@@ -29,10 +30,17 @@ const dateTime = new Intl.DateTimeFormat("es-AR", {
 });
 
 export default async function ConversacionesPage() {
-  const [{ rows, waitingCount, lateCount }, accounts] = await Promise.all([
-    getConversationQueue(),
-    getChannelAccounts(),
-  ]);
+  let data;
+  try {
+    data = await Promise.all([getConversationQueue(), getChannelAccounts()]);
+  } catch (error) {
+    // Layout y página se renderizan en paralelo. El layout resuelve la
+    // redirección/estado protegido; evitar propagar aquí el mismo resultado
+    // impide que un acceso anónimo esperado aparezca como error de runtime.
+    if (error instanceof PanelAuthenticationRequired || error instanceof PanelAccessError) return null;
+    throw error;
+  }
+  const [{ rows, waitingCount, lateCount }, accounts] = data;
   return (
     <PanelShell
       title="Conversaciones"
