@@ -1,5 +1,6 @@
 import { ApiError, apiErrorResponse, json, readJsonObject } from "./api";
-import { ADVISOR_MODEL } from "./advisor";
+import { ADVISOR_MODEL, anthropicClient, openAIClient } from "./advisor";
+import { configuredAdvisorProvider } from "./advisor-config";
 import { getPublicProfile, getPublicStockData, type PublicProfileView } from "./public-data";
 
 export const WEB_ADVISOR_MODEL = process.env.WEB_ADVISOR_MODEL?.trim() || ADVISOR_MODEL;
@@ -19,6 +20,10 @@ export type WebAdvisorRuntime = Readonly<{
   profile?: () => Promise<PublicProfileView | null>;
   now?: Date;
   apiKey?: string;
+  provider?: "openai" | "anthropic";
+  openAiApiKey?: string;
+  anthropicApiKey?: string;
+  fetchImpl?: typeof fetch;
   /** Sólo para pruebas de deadline; producción usa 25 segundos. */
   timeoutMs?: number;
 }>;
@@ -98,16 +103,27 @@ function safeReply(content: readonly Record<string, unknown>[]): string {
   return text;
 }
 
-function defaultModel(apiKey?: string): WebAdvisorModel {
-  const key = (apiKey ?? process.env.ANTHROPIC_API_KEY ?? "").trim();
-  if (key.length < 16) throw new ApiError(503, "WEB_ADVISOR_UNAVAILABLE", "El asesor no está disponible.");
-  return { async createMessage(params, options) { const { default: Anthropic } = await import("@anthropic-ai/sdk"); const client = new Anthropic({ apiKey: key, maxRetries: 0, timeout: WEB_ADVISOR_TIMEOUT_MS }); return await client.messages.create(params as never, options) as never; } };
+function defaultModel(runtime: WebAdvisorRuntime): WebAdvisorModel {
+  try {
+    if (runtime.provider === "openai") {
+      return openAIClient(runtime.openAiApiKey, runtime.fetchImpl);
+    }
+    if (runtime.provider === "anthropic") {
+      return anthropicClient(runtime.anthropicApiKey ?? runtime.apiKey);
+    }
+    if (runtime.apiKey !== undefined) return anthropicClient(runtime.apiKey);
+    return configuredAdvisorProvider() === "openai"
+      ? openAIClient(runtime.openAiApiKey, runtime.fetchImpl)
+      : anthropicClient(runtime.anthropicApiKey);
+  } catch {
+    throw new ApiError(503, "WEB_ADVISOR_UNAVAILABLE", "El asesor no está disponible.");
+  }
 }
 
 export async function handleWebAdvisor(request: Request, runtime: WebAdvisorRuntime = {}): Promise<Response> {
   try {
     const messages = validateMessages(await readJsonObject64KiB(request));
-    const model = runtime.model ?? defaultModel(runtime.apiKey);
+    const model = runtime.model ?? defaultModel(runtime);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), runtime.timeoutMs ?? WEB_ADVISOR_TIMEOUT_MS);
     const modelMessages: Array<Record<string, unknown>> = messages.map((m) => ({ ...m }));

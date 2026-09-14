@@ -7,9 +7,10 @@ import {
   type AdvisorToolContext,
 } from "./advisor-tools";
 import { MAX_OUTBOUND_TEXT } from "./inbox-outbound";
-import { advisorIsConfigured } from "./advisor-config";
+import { advisorIsConfigured, configuredAdvisorProvider } from "./advisor-config";
 
 export const ADVISOR_MODEL = "claude-opus-5";
+export const OPENAI_ADVISOR_MODEL = "gpt-5.4-mini";
 
 /**
  * Tope de rondas de herramientas por turno. Un asesor que necesita más de
@@ -66,7 +67,10 @@ export type AdvisorMessage = Readonly<{
 }>;
 
 export type AdvisorModelClient = {
-  createMessage(params: Record<string, unknown>): Promise<AdvisorModelResponse>;
+  createMessage(
+    params: Record<string, unknown>,
+    options?: { signal?: AbortSignal },
+  ): Promise<AdvisorModelResponse>;
 };
 
 export type AdvisorModelResponse = Readonly<{
@@ -78,6 +82,11 @@ export type AdvisorRuntime = Readonly<{
   model?: AdvisorModelClient;
   toolContext?: Partial<AdvisorToolContext>;
   session?: AdvisorSession;
+  provider?: "openai" | "anthropic";
+  openAiApiKey?: string;
+  anthropicApiKey?: string;
+  fetchImpl?: typeof fetch;
+  /** @deprecated Compatibilidad con pruebas e integraciones anteriores de Anthropic. */
   apiKey?: string;
   now?: Date;
 }>;
@@ -103,7 +112,7 @@ export type AdvisorTurn = Readonly<{
  * conversación atendida por una persona no arrastra la librería al bundle del
  * Worker ni al arranque del pedido.
  */
-function anthropicClient(apiKey?: string): AdvisorModelClient {
+export function anthropicClient(apiKey?: string): AdvisorModelClient {
   const key = (apiKey ?? process.env.ANTHROPIC_API_KEY ?? "").trim();
   if (!advisorIsConfigured(key)) {
     throw new ApiError(
@@ -113,14 +122,163 @@ function anthropicClient(apiKey?: string): AdvisorModelClient {
     );
   }
   return {
-    async createMessage(params) {
+    async createMessage(params, options) {
       const { default: Anthropic } = await import("@anthropic-ai/sdk");
       const client = new Anthropic({ apiKey: key });
       return (await client.messages.create(
         params as unknown as Parameters<typeof client.messages.create>[0],
+        options,
       )) as unknown as AdvisorModelResponse;
     },
   };
+}
+
+function systemText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value
+    .filter((block): block is Record<string, unknown> => Boolean(block) && typeof block === "object")
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => String(block.text))
+    .join("\n\n");
+}
+
+function openAIInput(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  const input: Record<string, unknown>[] = [];
+  for (const rawMessage of value) {
+    if (!rawMessage || typeof rawMessage !== "object") continue;
+    const message = rawMessage as Record<string, unknown>;
+    const role = message.role === "assistant" ? "assistant" : "user";
+    if (typeof message.content === "string") {
+      input.push({ role, content: message.content });
+      continue;
+    }
+    if (!Array.isArray(message.content)) continue;
+    const text = message.content
+      .filter((block): block is Record<string, unknown> => Boolean(block) && typeof block === "object")
+      .filter((block) => block.type === "text" && typeof block.text === "string")
+      .map((block) => String(block.text))
+      .join("\n\n");
+    if (text) input.push({ role, content: text });
+    for (const rawBlock of message.content) {
+      if (!rawBlock || typeof rawBlock !== "object") continue;
+      const block = rawBlock as Record<string, unknown>;
+      if (block.type === "tool_use") {
+        input.push({
+          type: "function_call",
+          call_id: String(block.id ?? ""),
+          name: String(block.name ?? ""),
+          arguments: JSON.stringify(block.input ?? {}),
+        });
+      } else if (block.type === "tool_result") {
+        input.push({
+          type: "function_call_output",
+          call_id: String(block.tool_use_id ?? ""),
+          output: typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? {}),
+        });
+      }
+    }
+  }
+  return input;
+}
+
+function openAITools(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((rawTool) => {
+    if (!rawTool || typeof rawTool !== "object") return [];
+    const tool = rawTool as Record<string, unknown>;
+    return [{
+      type: "function",
+      name: String(tool.name ?? ""),
+      description: String(tool.description ?? ""),
+      parameters: tool.input_schema ?? {},
+      strict: tool.strict === true,
+    }];
+  });
+}
+
+function safeArguments(value: unknown): unknown {
+  if (typeof value !== "string") return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+/** Adapta Responses API al contrato interno que también usa Anthropic. */
+export function openAIClient(apiKey?: string, fetchImpl: typeof fetch = fetch): AdvisorModelClient {
+  const key = (apiKey ?? process.env.OPENAI_API_KEY ?? "").trim();
+  if (!advisorIsConfigured(key)) {
+    throw new ApiError(503, "ADVISOR_NOT_CONFIGURED", "El asesor no está configurado.");
+  }
+  return {
+    async createMessage(params, options) {
+      const response = await fetchImpl("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_ADVISOR_MODEL?.trim() || OPENAI_ADVISOR_MODEL,
+          instructions: systemText(params.system),
+          input: openAIInput(params.messages),
+          tools: openAITools(params.tools),
+          tool_choice: "auto",
+          // Chat corto y herramientas estrictas: sin razonamiento persistible
+          // evitamos estado opaco entre rondas y reducimos latencia/costo.
+          reasoning: { effort: "none" },
+          max_output_tokens: 1_200,
+          store: false,
+        }),
+        signal: options?.signal,
+      });
+      if (!response.ok) throw new Error(`OpenAI respondió ${response.status}.`);
+      const payload = await response.json() as Record<string, unknown>;
+      if (payload.status !== "completed" || !Array.isArray(payload.output)) {
+        throw new Error("OpenAI no completó la respuesta.");
+      }
+      let refused = false;
+      const content: Record<string, unknown>[] = [];
+      for (const rawItem of payload.output) {
+        if (!rawItem || typeof rawItem !== "object") continue;
+        const item = rawItem as Record<string, unknown>;
+        if (item.type === "function_call") {
+          content.push({
+            type: "tool_use",
+            id: String(item.call_id ?? item.id ?? ""),
+            name: String(item.name ?? ""),
+            input: safeArguments(item.arguments),
+          });
+        }
+        if (item.type === "message" && Array.isArray(item.content)) {
+          for (const rawPart of item.content) {
+            if (!rawPart || typeof rawPart !== "object") continue;
+            const part = rawPart as Record<string, unknown>;
+            if (part.type === "output_text" && typeof part.text === "string") {
+              content.push({ type: "text", text: part.text });
+            }
+            if (part.type === "refusal") refused = true;
+          }
+        }
+      }
+      return { stop_reason: refused ? "refusal" : "end_turn", content };
+    },
+  };
+}
+
+function defaultModel(runtime: AdvisorRuntime): AdvisorModelClient {
+  if (runtime.provider === "openai") return openAIClient(runtime.openAiApiKey, runtime.fetchImpl);
+  if (runtime.provider === "anthropic") {
+    return anthropicClient(runtime.anthropicApiKey ?? runtime.apiKey);
+  }
+  // `apiKey` era el único override histórico y sigue representando Anthropic.
+  if (runtime.apiKey !== undefined) return anthropicClient(runtime.apiKey);
+  const provider = configuredAdvisorProvider();
+  if (provider === "openai") return openAIClient(runtime.openAiApiKey, runtime.fetchImpl);
+  return anthropicClient(runtime.anthropicApiKey);
 }
 
 function textOf(content: readonly Record<string, unknown>[]): string {
@@ -187,7 +345,7 @@ export async function runAdvisorTurn(
     return { reply: null, escalated: true, outcome, toolCalls };
   };
 
-  const model = runtime.model ?? anthropicClient(runtime.apiKey);
+  const model = runtime.model ?? defaultModel(runtime);
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
     let response: AdvisorModelResponse;

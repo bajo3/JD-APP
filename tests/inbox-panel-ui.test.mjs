@@ -99,6 +99,7 @@ test("Zernio vive en Configuración y Conversaciones carga solamente la cola", a
   assert.match(conversations, /href="\/panel\/configuracion"/);
   assert.match(settings, /ChannelAccountForm/);
   assert.match(settings, /ChannelAdvisorControls/);
+  assert.match(settings, /OpenAI listo/);
   assert.match(conversations, /PanelAuthenticationRequired/);
   assert.match(conversations, /PanelAccessError/);
 });

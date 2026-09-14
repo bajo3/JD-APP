@@ -174,8 +174,11 @@ ZERNIO_API_KEY=
 # opcional; por defecto https://zernio.com/api
 ZERNIO_API_BASE_URL=
 
-# asesor conversacional (Claude). Sin clave, el asesor responde 503 y la
-# conversación queda en atención humana.
+# asesor conversacional. OpenAI tiene prioridad si ambas claves existen;
+# alcanza con configurar una. Sin clave, la conversación queda humana.
+OPENAI_API_KEY=
+OPENAI_ADVISOR_MODEL=gpt-5.4-mini
+# alternativa compatible
 ANTHROPIC_API_KEY=
 ```
 
@@ -246,11 +249,14 @@ vigencia (decisión #15); no se presenta como una capacidad automática activa.
 el catálogo y el perfil comercial públicos, devuelve enlaces a las fichas y
 orienta hacia los flujos de financiación, tasación y contacto. El historial
 permanece sólo en memoria mientras está abierta la pantalla; no se guarda en
-la cuenta. La consulta se procesa con Anthropic cuando está configurado.
+la cuenta. La consulta se procesa con OpenAI cuando `OPENAI_API_KEY` está
+configurada, o con Anthropic como alternativa.
 
-Para activar las respuestas, configurar `ANTHROPIC_API_KEY` en el entorno
-ignorado o en Vercel. `WEB_ADVISOR_MODEL` es opcional y permite seleccionar
-el modelo del chat web; por defecto utiliza el del asesor existente.
+Para activar las respuestas, configurar `OPENAI_API_KEY` o
+`ANTHROPIC_API_KEY` en el entorno ignorado o en Vercel. OpenAI tiene prioridad
+si ambas existen. `OPENAI_ADVISOR_MODEL` permite cambiar su modelo y usa
+`gpt-5.4-mini` por defecto; `WEB_ADVISOR_MODEL` conserva la selección cuando
+se usa Anthropic.
 Sin clave el endpoint devuelve 503 y la interfaz ofrece reintentar o continuar
 por los recorridos habituales. No hay respuestas de demostración simuladas
 en el producto. El límite `RATE_LIMIT_PUBLIC_WEB_ADVISOR` es 12/10 minutos
@@ -319,8 +325,8 @@ El agente queda apagado por defecto en cada cuenta conectada. Al activarlo,
 las conversaciones nuevas de ese canal nacen en modo asesor; las que ya están
 en manos de una persona no cambian. Al apagarlo, toda conversación abierta que
 estuviera en modo asesor vuelve a atención humana y los envíos de IA en vuelo
-se rechazan antes de llegar a Zernio. Sin `ANTHROPIC_API_KEY` no se puede
-activar ningún canal.
+se rechazan antes de llegar a Zernio. Sin `OPENAI_API_KEY` ni
+`ANTHROPIC_API_KEY` no se puede activar ningún canal.
 
 ## Estructura relevante
 

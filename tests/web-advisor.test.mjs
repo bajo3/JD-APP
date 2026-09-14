@@ -79,3 +79,27 @@ test("ejecuta perfil público sin exponer datos privados", async () => {
   assert.equal(response.status, 200);
   assert.equal(reads, 2);
 });
+
+test("el asesor web también puede usar OpenAI sin depender de Anthropic", async () => {
+  let calls = 0;
+  const response = await handleWebAdvisor(
+    request([{ role: "user", content: "Hola" }]),
+    {
+      provider: "openai",
+      openAiApiKey: "sk-openai-clave-de-prueba",
+      fetchImpl: async () => {
+        calls += 1;
+        return Response.json({
+          status: "completed",
+          output: [{
+            type: "message",
+            content: [{ type: "output_text", text: "Hola, ¿qué auto estás buscando?" }],
+          }],
+        });
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 1);
+  assert.equal((await response.json()).data.reply, "Hola, ¿qué auto estás buscando?");
+});

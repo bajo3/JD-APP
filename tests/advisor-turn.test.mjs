@@ -55,8 +55,13 @@ const {
   ADVISOR_MODEL,
   ADVISOR_SYSTEM_PROMPT,
   MAX_TOOL_ROUNDS,
+  OPENAI_ADVISOR_MODEL,
+  openAIClient,
   runAdvisorTurn,
 } = await import("../lib/server/advisor.ts");
+const { advisorIsConfigured, configuredAdvisorProvider } = await import(
+  "../lib/server/advisor-config.ts"
+);
 
 const NOW = new Date("2026-09-03T12:00:00.000Z");
 
@@ -256,6 +261,97 @@ test("cuando el asesor escala, el turno termina ahí y no negocia más", async (
   assert.deepEqual(calls, [["handling", "HUMAN"], ["motivo", "quiere señar la unidad"]]);
 });
 
+test("OpenAI Responses usa el mismo contrato seguro de mensajes y herramientas", async () => {
+  let request;
+  const client = openAIClient("sk-openai-clave-de-prueba", async (url, init) => {
+    request = { url, init, body: JSON.parse(String(init.body)) };
+    return Response.json({
+      status: "completed",
+      output: [{
+        type: "function_call",
+        call_id: "call-stock-1",
+        name: "buscar_vehiculos",
+        arguments: JSON.stringify({
+          presupuestoTotal: 8_000_000,
+          anticipo: 2_000_000,
+          cuotaMaxima: 900_000,
+        }),
+      }],
+    });
+  });
+
+  const response = await client.createMessage({
+    system: [{ type: "text", text: ADVISOR_SYSTEM_PROMPT }],
+    tools: [{
+      name: "buscar_vehiculos",
+      description: "Consulta únicamente el inventario vigente.",
+      strict: true,
+      input_schema: { type: "object", additionalProperties: false, properties: {} },
+    }],
+    messages: [
+      { role: "user", content: "Busco una camioneta" },
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "call-anterior", name: "buscar_vehiculos", input: {} }],
+      },
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "call-anterior", content: "{\"opciones\":[]}" }],
+      },
+    ],
+  });
+
+  assert.equal(request.url, "https://api.openai.com/v1/responses");
+  assert.equal(request.body.model, OPENAI_ADVISOR_MODEL);
+  assert.equal(request.body.store, false);
+  assert.equal(request.body.reasoning.effort, "none");
+  assert.equal(request.body.instructions, ADVISOR_SYSTEM_PROMPT);
+  assert.equal(request.body.tools[0].type, "function");
+  assert.equal(request.body.tools[0].parameters.type, "object");
+  assert.ok(request.body.input.some((item) => item.type === "function_call"));
+  assert.ok(request.body.input.some((item) => item.type === "function_call_output"));
+  assert.deepEqual(response.content, [{
+    type: "tool_use",
+    id: "call-stock-1",
+    name: "buscar_vehiculos",
+    input: { presupuestoTotal: 8_000_000, anticipo: 2_000_000, cuotaMaxima: 900_000 },
+  }]);
+});
+
+test("OpenAI devuelve texto al contrato interno sin exponer su respuesta cruda", async () => {
+  const client = openAIClient("sk-openai-clave-de-prueba", async () => Response.json({
+    status: "completed",
+    output: [{
+      type: "message",
+      content: [{ type: "output_text", text: "¿Qué presupuesto manejás?" }],
+    }],
+  }));
+  const response = await client.createMessage({ system: "reglas", tools: [], messages: [] });
+  assert.deepEqual(response, {
+    stop_reason: "end_turn",
+    content: [{ type: "text", text: "¿Qué presupuesto manejás?" }],
+  });
+});
+
+test("una clave OpenAI habilita el agente y tiene prioridad si ambas existen", () => {
+  const originalOpenAI = process.env.OPENAI_API_KEY;
+  const originalAnthropic = process.env.ANTHROPIC_API_KEY;
+  try {
+    process.env.OPENAI_API_KEY = "sk-openai-clave-de-prueba";
+    delete process.env.ANTHROPIC_API_KEY;
+    assert.equal(advisorIsConfigured(), true);
+    assert.equal(configuredAdvisorProvider(), "openai");
+
+    process.env.ANTHROPIC_API_KEY = "sk-anthropic-clave-de-prueba";
+    assert.equal(configuredAdvisorProvider(), "openai");
+  } finally {
+    if (originalOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalOpenAI;
+    if (originalAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalAnthropic;
+  }
+});
+
 test("una solicitud de visita queda pendiente y termina el turno del asesor", async () => {
   const { client, seen } = scriptedModel([
     {
@@ -312,4 +408,5 @@ test("el prompt le prohíbe explícitamente inventar y le exige escalar", () => 
   assert.match(ADVISOR_SYSTEM_PROMPT, /Nunca prometés reservar/);
   assert.match(ADVISOR_SYSTEM_PROMPT, /escalar_a_persona/);
   assert.equal(ADVISOR_MODEL, "claude-opus-5");
+  assert.equal(OPENAI_ADVISOR_MODEL, "gpt-5.4-mini");
 });

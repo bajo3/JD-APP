@@ -2,7 +2,7 @@ import { ChannelAccountForm } from "../_components/ChannelAccountForm";
 import { ChannelAdvisorControls } from "../_components/ChannelAdvisorControls";
 import { PanelShell } from "../_components/PanelShell";
 import { getPanelConfigurationData } from "@/lib/server/inbox-panel-data";
-import { advisorIsConfigured } from "@/lib/server/advisor-config";
+import { advisorIsConfigured, configuredAdvisorProvider } from "@/lib/server/advisor-config";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,12 +24,14 @@ export default async function ConfiguracionPage() {
   const activeCount = accounts.filter((account) => account.status === "ACTIVE").length;
   const advisorCount = accounts.filter((account) => account.advisorEnabled).length;
   const canActivateAdvisor = advisorIsConfigured();
+  const advisorProvider = configuredAdvisorProvider();
+  const advisorProviderLabel = advisorProvider === "openai" ? "OpenAI listo" : advisorProvider === "anthropic" ? "Anthropic listo" : "falta la clave de IA";
 
   return (
     <PanelShell title="Configuración" subtitle="Conexiones, automatización y fuentes de datos del negocio.">
       <section className="panel-metrics settings-metrics" aria-label="Estado de integraciones">
         <div className="panel-metric orange"><span>Canales activos</span><strong>{activeCount}</strong><small>de {accounts.length} sincronizados</small></div>
-        <div className="panel-metric"><span>Agentes activos</span><strong>{advisorCount}</strong><small>apagados por defecto</small></div>
+        <div className="panel-metric"><span>Agentes activos</span><strong>{advisorCount}</strong><small>{advisorProviderLabel} · apagados por defecto</small></div>
         <div className="panel-metric"><span>Stock JD‑Auto</span><strong>{stock.availableVehicles}</strong><small>unidades disponibles sincronizadas</small></div>
       </section>
 
