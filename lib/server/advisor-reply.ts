@@ -93,9 +93,13 @@ export async function replyIfAdvisorHandles(
         },
       },
     );
-  } catch {
+  } catch (error) {
     // El asesor no está configurado o falló antes de arrancar: la conversación
     // se queda con una persona en lugar de quedar muda.
+    console.error("advisor_reply_turn_failed", {
+      reason: "ADVISOR_UNAVAILABLE",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
     await repository.setHandling({
       conversationId: context.id,
       handling: "HUMAN",
@@ -106,6 +110,7 @@ export async function replyIfAdvisorHandles(
   }
 
   if (turn.reply === null) {
+    console.info("advisor_reply_outcome", { status: "escalated", reason: turn.outcome });
     return { status: "escalated", reason: turn.outcome };
   }
 
@@ -122,9 +127,14 @@ export async function replyIfAdvisorHandles(
       outboundRuntime,
     );
   } catch {
+    console.error("advisor_reply_send_failed", { status: "failed", reason: "SEND_FAILED" });
     return { status: "failed", reason: "SEND_FAILED" };
   }
 
+  console.info("advisor_reply_outcome", {
+    status: turn.escalated ? "escalated" : "replied",
+    reason: turn.outcome,
+  });
   return {
     status: turn.escalated ? "escalated" : "replied",
     reason: turn.outcome,

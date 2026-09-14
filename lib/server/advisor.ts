@@ -235,9 +235,34 @@ export function openAIClient(apiKey?: string, fetchImpl: typeof fetch = fetch): 
         }),
         signal: options?.signal,
       });
-      if (!response.ok) throw new Error(`OpenAI respondió ${response.status}.`);
+      if (!response.ok) {
+        let errorCode: string | null = null;
+        let errorType: string | null = null;
+        try {
+          const errorPayload = await response.clone().json() as Record<string, unknown>;
+          const error = errorPayload.error;
+          if (error && typeof error === "object" && !Array.isArray(error)) {
+            const record = error as Record<string, unknown>;
+            errorCode = typeof record.code === "string" ? record.code.slice(0, 80) : null;
+            errorType = typeof record.type === "string" ? record.type.slice(0, 80) : null;
+          }
+        } catch {
+          // La respuesta de error puede no ser JSON; el status alcanza para
+          // diagnosticarla sin guardar el cuerpo (que podría traer datos).
+        }
+        console.error("advisor_openai_request_failed", {
+          status: response.status,
+          errorCode,
+          errorType,
+        });
+        throw new Error(`OpenAI respondió ${response.status}.`);
+      }
       const payload = await response.json() as Record<string, unknown>;
       if (payload.status !== "completed" || !Array.isArray(payload.output)) {
+        console.error("advisor_openai_incomplete", {
+          responseStatus: typeof payload.status === "string" ? payload.status : null,
+          outputArray: Array.isArray(payload.output),
+        });
         throw new Error("OpenAI no completó la respuesta.");
       }
       let refused = false;
