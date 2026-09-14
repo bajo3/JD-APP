@@ -663,18 +663,21 @@ export class D1ChannelInboxRepository {
                 c.last_inbound_at, c.last_outbound_at, a.display_name AS account_display_name,
                 (SELECT m.text FROM inbox_message m
                   WHERE m.conversation_id = c.id
-                  ORDER BY m.occurred_at DESC, m.seq DESC LIMIT 1) AS last_message_text,
-                CASE
-                  WHEN c.last_inbound_at IS NOT NULL
-                   AND (c.last_outbound_at IS NULL OR c.last_outbound_at < c.last_inbound_at)
-                  THEN 0 ELSE 1
-                END AS waiting_rank
+                  ORDER BY m.occurred_at DESC, m.seq DESC LIMIT 1) AS last_message_text
            FROM inbox_conversation c
            JOIN channel_account a ON a.id = c.channel_account_id
            LEFT JOIN lead l ON l.id = c.lead_id
           WHERE c.status != 'CLOSED'
-          ORDER BY waiting_rank ASC,
-                   CASE WHEN waiting_rank = 0 THEN c.last_inbound_at END ASC,
+          ORDER BY CASE
+                     WHEN c.last_inbound_at IS NOT NULL
+                      AND (c.last_outbound_at IS NULL OR c.last_outbound_at < c.last_inbound_at)
+                     THEN 0 ELSE 1
+                   END ASC,
+                   CASE
+                     WHEN c.last_inbound_at IS NOT NULL
+                      AND (c.last_outbound_at IS NULL OR c.last_outbound_at < c.last_inbound_at)
+                     THEN c.last_inbound_at
+                   END ASC,
                    c.last_inbound_at DESC
           LIMIT ?`,
       )

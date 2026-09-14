@@ -187,6 +187,17 @@ suite("la sincronización Zernio conserva idempotencia y auditoría en Postgres 
   }
 });
 
+suite("la cola de conversaciones usa un ORDER BY válido en Postgres real", async () => {
+  const database = new SupabaseD1Database({ connectionString });
+  const repository = new D1ChannelInboxRepository(database);
+  try {
+    const rows = await repository.listConversationQueue(1);
+    assert.equal(Array.isArray(rows), true);
+  } finally {
+    await database.close();
+  }
+});
+
 suite("una configuración vacía falla cerrado sin conectar", () => {
   assert.throws(
     () => new SupabaseD1Database({ connectionString: "" }),
