@@ -183,17 +183,66 @@ function openAIInput(value: unknown): Record<string, unknown>[] {
   return input;
 }
 
+/**
+ * Responses exige que una herramienta strict tenga todos los campos del
+ * objeto en `required`. Los campos que en nuestro contrato son opcionales se
+ * expresan como nullable y el modelo los devuelve como `null` cuando no
+ * aplican. Anthropic usa el mismo schema sin esta restricción adicional.
+ */
+function openAIStrictSchema(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const schema = value as Record<string, unknown>;
+  const properties = schema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
+    if (schema.items) return { ...schema, items: openAIStrictSchema(schema.items) };
+    return { ...schema };
+  }
+
+  const propertyEntries = Object.entries(properties as Record<string, unknown>);
+  const originalRequired = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter((key): key is string => typeof key === "string")
+      : [],
+  );
+  const normalizedProperties: Record<string, unknown> = {};
+  for (const [key, property] of propertyEntries) {
+    const normalized = openAIStrictSchema(property);
+    if (originalRequired.has(key)) {
+      normalizedProperties[key] = normalized;
+      continue;
+    }
+    if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+      normalizedProperties[key] = normalized;
+      continue;
+    }
+    const nullable = { ...(normalized as Record<string, unknown>) };
+    const type = nullable.type;
+    if (typeof type === "string") {
+      nullable.type = [type, "null"];
+    } else if (Array.isArray(type) && !type.includes("null")) {
+      nullable.type = [...type, "null"];
+    }
+    normalizedProperties[key] = nullable;
+  }
+  return {
+    ...schema,
+    properties: normalizedProperties,
+    required: propertyEntries.map(([key]) => key),
+  };
+}
+
 function openAITools(value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((rawTool) => {
     if (!rawTool || typeof rawTool !== "object") return [];
     const tool = rawTool as Record<string, unknown>;
+    const strict = tool.strict === true;
     return [{
       type: "function",
       name: String(tool.name ?? ""),
       description: String(tool.description ?? ""),
-      parameters: tool.input_schema ?? {},
-      strict: tool.strict === true,
+      parameters: strict ? openAIStrictSchema(tool.input_schema ?? {}) : (tool.input_schema ?? {}),
+      strict,
     }];
   });
 }

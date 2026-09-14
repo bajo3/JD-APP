@@ -286,7 +286,11 @@ test("OpenAI Responses usa el mismo contrato seguro de mensajes y herramientas",
       name: "buscar_vehiculos",
       description: "Consulta únicamente el inventario vigente.",
       strict: true,
-      input_schema: { type: "object", additionalProperties: false, properties: {} },
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: { marcas: { type: "array", items: { type: "string" } } },
+      },
     }],
     messages: [
       { role: "user", content: "Busco una camioneta" },
@@ -308,6 +312,8 @@ test("OpenAI Responses usa el mismo contrato seguro de mensajes y herramientas",
   assert.equal(request.body.instructions, ADVISOR_SYSTEM_PROMPT);
   assert.equal(request.body.tools[0].type, "function");
   assert.equal(request.body.tools[0].parameters.type, "object");
+  assert.deepEqual(request.body.tools[0].parameters.required, ["marcas"]);
+  assert.deepEqual(request.body.tools[0].parameters.properties.marcas.type, ["array", "null"]);
   assert.ok(request.body.input.some((item) => item.type === "function_call"));
   assert.ok(request.body.input.some((item) => item.type === "function_call_output"));
   assert.deepEqual(response.content, [{
