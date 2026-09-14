@@ -283,26 +283,55 @@ export async function getAdminConsignmentDetailData(
   };
 }
 
-export async function getAdminPanelData() {
+export async function getAdminDashboardData() {
   const user = await requirePanelUser("/panel");
   const dependencies = adminDependencies({
     userId: user.userId,
     email: user.email,
     displayName: user.displayName,
   });
-  const [overview, funnel, leadRows, vehicleRows, appraisalRows, consignmentRows, promotionRows, financeRows] = await Promise.all([
+  const [overview, funnel] = await Promise.all([
     getAdminOverview(dependencies),
     getConversionFunnel(),
-    listAdminLeads(dependencies, { limit: 100 }),
-    listAdminStock(dependencies, { limit: 100 }),
-    listAdminAppraisals(dependencies, { limit: 100 }),
-    listAdminConsignments(dependencies, { limit: 100 }),
-    listAdminPromotions(dependencies, { limit: 100 }),
-    listFinanceVersions(dependencies),
   ]);
+  return { overview, funnel };
+}
+
+type PanelResource = "leads" | "vehicles" | "appraisals" | "consignments" | "offers" | "financePlans";
+
+const PANEL_RESOURCE_PATH: Record<PanelResource, string> = {
+  leads: "/panel/leads",
+  vehicles: "/panel/stock",
+  appraisals: "/panel/tasaciones",
+  consignments: "/panel/consignaciones",
+  offers: "/panel/ofertas",
+  financePlans: "/panel/financiacion",
+};
+
+export async function getAdminPanelData(resource: PanelResource) {
+  const user = await requirePanelUser(PANEL_RESOURCE_PATH[resource]);
+  const dependencies = adminDependencies({
+    userId: user.userId,
+    email: user.email,
+    displayName: user.displayName,
+  });
+  const [overview, rows] = await Promise.all([
+    getAdminOverview(dependencies),
+    resource === "leads" ? listAdminLeads(dependencies, { limit: 100 })
+      : resource === "vehicles" ? listAdminStock(dependencies, { limit: 100 })
+      : resource === "appraisals" ? listAdminAppraisals(dependencies, { limit: 100 })
+      : resource === "consignments" ? listAdminConsignments(dependencies, { limit: 100 })
+      : resource === "offers" ? listAdminPromotions(dependencies, { limit: 100 })
+      : listFinanceVersions(dependencies),
+  ]);
+  const leadRows = resource === "leads" ? rows as Awaited<ReturnType<typeof listAdminLeads>> : [];
+  const vehicleRows = resource === "vehicles" ? rows as Awaited<ReturnType<typeof listAdminStock>> : [];
+  const appraisalRows = resource === "appraisals" ? rows as Awaited<ReturnType<typeof listAdminAppraisals>> : [];
+  const consignmentRows = resource === "consignments" ? rows as Awaited<ReturnType<typeof listAdminConsignments>> : [];
+  const promotionRows = resource === "offers" ? rows as Awaited<ReturnType<typeof listAdminPromotions>> : [];
+  const financeRows = resource === "financePlans" ? rows as Awaited<ReturnType<typeof listFinanceVersions>> : [];
   return {
     overview,
-    funnel,
     leads: leadRows.map((lead): AdminLead => ({
       id: lead.id,
       name: lead.name,

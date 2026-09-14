@@ -32,8 +32,8 @@ test("cada coincidencia muestra por qué coincide y por qué no", async () => {
 });
 
 test("la demanda entra en la navegación del panel", async () => {
-  const shell = await read("app/panel/_components/PanelShell.tsx");
-  assert.match(shell, /'\/panel\/demandas','Demanda'/);
+  const navigation = await read("app/panel/_components/PanelNavigation.tsx");
+  assert.match(navigation, /\["\/panel\/demandas", "Demanda"/);
 });
 
 test("la pantalla exige sesión del panel antes de leer nada", async () => {

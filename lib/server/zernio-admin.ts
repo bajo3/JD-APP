@@ -1,7 +1,15 @@
 import type { ChannelInboxRepositoryLike } from "@/lib/data/channel-inbox-repository";
 import { D1ChannelInboxRepository } from "@/lib/data/channel-inbox-repository";
-import { adminApiRoute, adminData, hashAdminPayload, requiredEnum, requiredStringArray } from "./admin-api";
+import {
+  adminApiRoute,
+  adminData,
+  expectedVersion,
+  hashAdminPayload,
+  requiredEnum,
+  requiredStringArray,
+} from "./admin-api";
 import type { AdminAuthOptions } from "./admin-auth";
+import { advisorIsConfigured } from "./advisor-config";
 import { ApiError, readJsonObject, requireIdempotencyKey, requiredString } from "./api";
 import {
   ZernioClient,
@@ -29,6 +37,7 @@ type Runtime = Readonly<{
   webhookSecret?: string;
   siteUrl?: string;
   now?: Date;
+  advisorApiKey?: string;
 }>;
 
 type SupportedRemotePlatform = "whatsapp" | "instagram" | "facebook";
@@ -189,6 +198,41 @@ export function adminZernioStatus(request: Request, runtime: Runtime = {}): Prom
   }, runtime.auth);
 }
 
+export function adminZernioAdvisor(request: Request, runtime: Runtime = {}): Promise<Response> {
+  return adminApiRoute(request, async (actor) => {
+    const payload = await readJsonObject(request);
+    assertOnlyKeys(payload, ["accountId", "enabled", "expectedVersion"]);
+    const accountId = requiredString(payload, "accountId", { min: 3, max: 200 });
+    if (typeof payload.enabled !== "boolean") {
+      throw new ApiError(422, "VALIDATION_ERROR", "Hay datos inválidos.", {
+        enabled: "Debe ser verdadero o falso.",
+      });
+    }
+    if (payload.enabled && !advisorIsConfigured(runtime.advisorApiKey)) {
+      throw new ApiError(503, "ADVISOR_NOT_CONFIGURED", "Falta configurar la clave del agente en Vercel.");
+    }
+    const result = await repository(runtime).setChannelAdvisor({
+      accountId,
+      enabled: payload.enabled,
+      expectedVersion: expectedVersion(payload),
+      actor,
+      updatedAt: (runtime.now ?? new Date()).toISOString(),
+    });
+    if (!result.ok && result.reason === "not_found") {
+      throw new ApiError(404, "CHANNEL_ACCOUNT_NOT_FOUND", "La cuenta conectada no existe.");
+    }
+    if (!result.ok) {
+      throw new ApiError(
+        409,
+        "ADMIN_VERSION_CONFLICT",
+        "La cuenta cambió desde la última lectura. Recargá antes de continuar.",
+        result.currentVersion ? { currentVersion: String(result.currentVersion) } : undefined,
+      );
+    }
+    return adminData({ accountId, advisorEnabled: payload.enabled, version: result.nextVersion });
+  }, runtime.auth);
+}
+
 export function adminZernioConnect(request: Request, runtime: Runtime = {}): Promise<Response> {
   return adminApiRoute(request, async () => {
     const url = new URL(request.url);
@@ -205,7 +249,7 @@ export function adminZernioConnect(request: Request, runtime: Runtime = {}): Pro
     if (!profiles.some((profile) => profile.id === profileId)) {
       throw new ApiError(404, "ZERNIO_PROFILE_NOT_FOUND", "El perfil de Zernio no existe.");
     }
-    const redirectUrl = `${publicOrigin(runtime)}/panel/conversaciones?zernio=callback`;
+    const redirectUrl = `${publicOrigin(runtime)}/panel/configuracion?zernio=callback`;
     const authUrl = await service.getConnectUrl({ platform, profileId, redirectUrl });
     return adminData({ authUrl });
   }, runtime.auth);

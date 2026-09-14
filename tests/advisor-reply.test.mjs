@@ -102,6 +102,7 @@ function harness({ handling = "AI" } = {}) {
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
+  database.exec("ALTER TABLE channel_account ADD COLUMN advisor_enabled INTEGER NOT NULL DEFAULT 0");
   // `seq` es una columna propia del esquema de Postgres (reemplaza el `rowid`
   // implícito de SQLite como desempate estable); las migraciones archivadas no
   // la declaran, así que la base de pruebas la agrega con un trigger que la
@@ -115,8 +116,8 @@ function harness({ handling = "AI" } = {}) {
   `);
   database
     .prepare(
-      `INSERT INTO channel_account (id, provider, platform, external_account_id, display_name, status, default_assignee)
-       VALUES ('acc-local', 'ZERNIO', 'whatsapp', 'zernio-acc-1', 'JDA WhatsApp', 'ACTIVE', 'vendedor@jda.test')`,
+      `INSERT INTO channel_account (id, provider, platform, external_account_id, display_name, status, advisor_enabled, default_assignee)
+       VALUES ('acc-local', 'ZERNIO', 'whatsapp', 'zernio-acc-1', 'JDA WhatsApp', 'ACTIVE', 1, 'vendedor@jda.test')`,
     )
     .run();
   database
@@ -286,7 +287,7 @@ test("si el asesor escala, no se manda texto y la conversación pasa a una perso
 });
 
 test("sin asesor configurado la conversación no queda muda: se marca para una persona", async () => {
-  const { repository, sends, outbound } = harness({ handling: "AI" });
+  const { repository, sends, outbound, rows } = harness({ handling: "AI" });
   const outcome = await replyIfAdvisorHandles(
     { conversationId: "conv-local", message: "hola", inboundMessageId: "msg-z" },
     { repository, outbound, advisor: { apiKey: "" }, now: NOW },
@@ -294,6 +295,7 @@ test("sin asesor configurado la conversación no queda muda: se marca para una p
   assert.equal(outcome.status, "failed");
   assert.equal(outcome.reason, "ADVISOR_UNAVAILABLE");
   assert.equal(sends.length, 0);
+  assert.equal(rows("SELECT handling FROM inbox_conversation WHERE id = 'conv-local'")[0].handling, "HUMAN");
 });
 
 test("un reintento del mismo evento no vuelve a contestar", async () => {

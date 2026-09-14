@@ -6,7 +6,7 @@ import { PanelShell } from "../_components/PanelShell";
 import Link from "next/link";
 
 export default async function ValuationsPage() {
-  const { overview, appraisals } = await getAdminPanelData();
+  const { overview, appraisals } = await getAdminPanelData("appraisals");
   const records = appraisals.map((item) => ({id:item.id,label:item.vehicle,status:item.status,version:item.version}));
   return <PanelShell title="Tasaciones" subtitle="Revisión humana, rango, certeza y vigencia.">
     <DemoNotice isDemo={overview.isDemo} />

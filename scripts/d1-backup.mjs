@@ -18,7 +18,7 @@ import { resolveDataRuntime } from "./data-runtime.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const META_DIR = join(SCRIPT_DIR, "..", "drizzle", "meta");
-const MIGRATION_FILE = join(SCRIPT_DIR, "..", "drizzle", "0000_skinny_ben_parker.sql");
+const MIGRATION_DIR = join(SCRIPT_DIR, "..", "drizzle");
 
 function latestSnapshot(metaDir = META_DIR) {
   const snapshots = readdirSync(metaDir)
@@ -52,6 +52,17 @@ export function readSchemaTables(metaDir = META_DIR) {
 }
 
 export const DRILL_TABLES = readSchemaTables();
+
+export function readMigrationChain(migrationDir = MIGRATION_DIR) {
+  const files = readdirSync(migrationDir)
+    .filter((name) => /^[0-9]{4}_[A-Za-z0-9_]+\.sql$/.test(name))
+    .sort();
+  if (files.length === 0) throw new Error("No hay migraciones SQL para ejecutar el ensayo.");
+  return files
+    .map((name) => readFileSync(join(migrationDir, name), "utf8"))
+    .join("\n")
+    .replaceAll("--> statement-breakpoint", "");
+}
 
 // Una fila con una FK no puede insertarse antes que la fila a la que apunta.
 // El propio snapshot de Drizzle ya declara cada FK, así que el orden de
@@ -175,7 +186,7 @@ async function restoreInto(runtime, dumpSql) {
 // estado por defecto antes de que el script siga.
 async function runDrill(runtime, dumpSql) {
   const schema = `drill_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  const migrationSql = readFileSync(MIGRATION_FILE, "utf8").replaceAll("--> statement-breakpoint", "");
+  const migrationSql = readMigrationChain();
   try {
     await runtime.d1.exec(
       [

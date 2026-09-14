@@ -5,7 +5,7 @@ import { DemoNotice } from "../_components/PanelCards";
 import { PanelShell } from "../_components/PanelShell";
 
 export default async function ConsignmentsPage() {
-  const { overview, consignments } = await getAdminPanelData();
+  const { overview, consignments } = await getAdminPanelData("consignments");
   const records = consignments.map((item) => ({id:item.id,label:item.vehicle,status:item.status,version:item.version}));
   return <PanelShell title="Consignación virtual" subtitle="Unidades ofrecidas por clientes: revisión, fotos privadas y decisión.">
     <DemoNotice isDemo={overview.isDemo} />

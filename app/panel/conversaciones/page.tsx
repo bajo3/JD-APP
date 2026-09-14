@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { getChannelAccounts, getConversationQueue } from "@/lib/server/inbox-panel-data";
+import { getConversationQueue } from "@/lib/server/inbox-panel-data";
 import { PanelAccessError, PanelAuthenticationRequired } from "@/lib/server/panel-auth";
-import { ChannelAccountForm } from "../_components/ChannelAccountForm";
 import { ConversationAssignButton } from "../_components/ConversationAssignButton";
 import { PanelShell } from "../_components/PanelShell";
 
@@ -32,7 +31,7 @@ const dateTime = new Intl.DateTimeFormat("es-AR", {
 export default async function ConversacionesPage() {
   let data;
   try {
-    data = await Promise.all([getConversationQueue(), getChannelAccounts()]);
+    data = await getConversationQueue();
   } catch (error) {
     // Layout y página se renderizan en paralelo. El layout resuelve la
     // redirección/estado protegido; evitar propagar aquí el mismo resultado
@@ -40,46 +39,19 @@ export default async function ConversacionesPage() {
     if (error instanceof PanelAuthenticationRequired || error instanceof PanelAccessError) return null;
     throw error;
   }
-  const [{ rows, waitingCount, lateCount }, accounts] = data;
+  const { rows, waitingCount, lateCount } = data;
   return (
     <PanelShell
       title="Conversaciones"
       subtitle="WhatsApp, Instagram y Messenger en una sola bandeja."
     >
-      <section className="panel-card" aria-labelledby="accounts-title">
-        <div className="panel-card-head">
-          <div>
-            <p className="panel-kicker">CUENTAS DEL CANAL</p>
-            <h2 id="accounts-title">Cuentas conectadas</h2>
-          </div>
-        </div>
-        {accounts.length === 0 ? (
-          <p className="panel-muted">
-            Sin ninguna cuenta cargada, el webhook no tiene a quién enrutar un mensaje entrante: llega y
-            queda archivado como no enrutado.
-          </p>
-        ) : (
-          <ul className="channel-account-list">
-            {accounts.map((account) => (
-              <li key={account.id}>
-                <strong>{PLATFORM_LABEL[account.platform] ?? account.platform}</strong>
-                <span>{account.displayName}</span>
-                <span className={`lead-validity${account.status !== "ACTIVE" ? " is-expired" : ""}`}>
-                  {account.status === "ACTIVE" ? "Activa" : "Pausada"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <ChannelAccountForm />
-      </section>
-
       <section className="panel-card" aria-labelledby="inbox-title">
         <div className="panel-card-head">
           <div>
             <p className="panel-kicker">BANDEJA UNIFICADA</p>
             <h2 id="inbox-title">Conversaciones abiertas</h2>
           </div>
+          <Link href="/panel/configuracion">Configurar canales</Link>
         </div>
         {rows.length === 0 ? (
           <p className="panel-muted">Todavía no hay conversaciones abiertas.</p>

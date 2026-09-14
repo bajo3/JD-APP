@@ -57,6 +57,7 @@ export async function replyIfAdvisorHandles(
 
   const context = await repository.findConversationForOutbound(input.conversationId);
   if (!context) return { status: "skipped", reason: "CONVERSATION_NOT_FOUND" };
+  if (!context.accountAdvisorEnabled) return { status: "skipped", reason: "CHANNEL_ADVISOR_DISABLED" };
   if (context.handling !== "AI") return { status: "skipped", reason: "HUMAN_HANDLING" };
   if (context.status === "CLOSED") return { status: "skipped", reason: "CONVERSATION_CLOSED" };
   // Fuera de la ventana sólo entra plantilla aprobada, y el asesor no manda
@@ -95,6 +96,12 @@ export async function replyIfAdvisorHandles(
   } catch {
     // El asesor no está configurado o falló antes de arrancar: la conversación
     // se queda con una persona en lugar de quedar muda.
+    await repository.setHandling({
+      conversationId: context.id,
+      handling: "HUMAN",
+      assignedTo: context.assignedTo,
+      updatedAt: now.toISOString(),
+    });
     return { status: "failed", reason: "ADVISOR_UNAVAILABLE" };
   }
 

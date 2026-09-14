@@ -94,7 +94,7 @@ function sqliteD1(database) {
   };
 }
 
-function harness({ accountStatus = "ACTIVE", lastInboundAt = INBOUND_AT, platform = "whatsapp" } = {}) {
+function harness({ accountStatus = "ACTIVE", advisorEnabled = true, lastInboundAt = INBOUND_AT, platform = "whatsapp" } = {}) {
   const database = new DatabaseSync(":memory:");
   for (const path of [
     "drizzle-sqlite-archive/0000_chemical_tiger_shark.sql",
@@ -102,6 +102,7 @@ function harness({ accountStatus = "ACTIVE", lastInboundAt = INBOUND_AT, platfor
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
+  database.exec("ALTER TABLE channel_account ADD COLUMN advisor_enabled INTEGER NOT NULL DEFAULT 0");
   // `seq` es una columna propia del esquema de Postgres (reemplaza el `rowid`
   // implícito de SQLite como desempate estable); las migraciones archivadas no
   // la declaran, así que la base de pruebas la agrega con un trigger que la
@@ -115,10 +116,10 @@ function harness({ accountStatus = "ACTIVE", lastInboundAt = INBOUND_AT, platfor
   `);
   database
     .prepare(
-      `INSERT INTO channel_account (id, provider, platform, external_account_id, display_name, status, default_assignee)
-       VALUES ('acc-local', 'ZERNIO', ?, 'zernio-acc-1', 'JDA WhatsApp', ?, 'vendedor@jda.test')`,
+      `INSERT INTO channel_account (id, provider, platform, external_account_id, display_name, status, advisor_enabled, default_assignee)
+       VALUES ('acc-local', 'ZERNIO', ?, 'zernio-acc-1', 'JDA WhatsApp', ?, ?, 'vendedor@jda.test')`,
     )
-    .run(platform, accountStatus);
+    .run(platform, accountStatus, advisorEnabled ? 1 : 0);
   database
     .prepare(`INSERT INTO lead (id, name, phone_normalized, source) VALUES ('lead-1', 'Marina', '+5492494587046', 'INBOX_WHATSAPP')`)
     .run();
@@ -196,6 +197,21 @@ test("dentro de la ventana el saliente sale como texto y queda citado en la band
   const [leadEvent] = rows("SELECT * FROM lead_event");
   assert.equal(leadEvent.type, "INBOX_MESSAGE_SENT");
   assert.equal(leadEvent.actor_type, "SYSTEM");
+});
+
+test("si apagan el agente mientras prepara una respuesta, el envío se corta antes del proveedor", async () => {
+  const { runtime, sends, rows } = harness({ advisorEnabled: false });
+  await assert.rejects(
+    () => sendOutboundMessage({
+      conversationId: "conv-local",
+      text: "Respuesta que ya estaba en preparación",
+      author: { type: "AI", id: "asesor" },
+      idempotencyKey: "key-disabled",
+    }, runtime),
+    (error) => error.code === "CHANNEL_ADVISOR_DISABLED" && error.status === 409,
+  );
+  assert.equal(sends.length, 0);
+  assert.equal(rows("SELECT * FROM inbox_message").length, 0);
 });
 
 test("fuera de la ventana de 24 horas no sale texto libre", async () => {

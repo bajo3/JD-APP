@@ -8,6 +8,7 @@ export type ChannelAccountRecord = Readonly<{
   platform: string;
   displayName: string;
   status: string;
+  advisorEnabled: boolean;
   defaultAssignee: string | null;
 }>;
 
@@ -41,7 +42,12 @@ export type OutboundContext = Readonly<{
   channelAccountId: string;
   externalAccountId: string;
   accountStatus: string;
+  accountAdvisorEnabled: boolean;
 }>;
+
+export type ChannelAdvisorUpdateResult =
+  | Readonly<{ ok: true; nextVersion: number }>
+  | Readonly<{ ok: false; reason: "not_found" | "conflict"; currentVersion?: number }>;
 
 export type InboundIngestInput = Readonly<{
   provider: string;
@@ -166,7 +172,7 @@ export class D1ChannelInboxRepository {
   ): Promise<ChannelAccountRecord | null> {
     const row = await this.d1
       .prepare(
-        `SELECT id, platform, display_name, status, default_assignee
+        `SELECT id, platform, display_name, status, advisor_enabled, default_assignee
            FROM channel_account
           WHERE provider = ? AND external_account_id = ?`,
       )
@@ -176,6 +182,7 @@ export class D1ChannelInboxRepository {
         platform: string;
         display_name: string;
         status: string;
+        advisor_enabled: boolean | number;
         default_assignee: string | null;
       }>();
     if (!row) return null;
@@ -184,6 +191,7 @@ export class D1ChannelInboxRepository {
       platform: String(row.platform),
       displayName: String(row.display_name),
       status: String(row.status),
+      advisorEnabled: Boolean(row.advisor_enabled),
       defaultAssignee: row.default_assignee === null ? null : String(row.default_assignee),
     };
   }
@@ -201,13 +209,16 @@ export class D1ChannelInboxRepository {
       externalAccountId: string;
       displayName: string;
       status: string;
+      advisorEnabled: boolean;
       defaultAssignee: string | null;
+      version: number;
       createdAt: string;
     }>
   > {
     const result = await this.d1
       .prepare(
-        `SELECT id, provider, platform, external_account_id, display_name, status, default_assignee, created_at
+        `SELECT id, provider, platform, external_account_id, display_name, status,
+                advisor_enabled, default_assignee, version, created_at
            FROM channel_account
           ORDER BY created_at DESC`,
       )
@@ -219,7 +230,9 @@ export class D1ChannelInboxRepository {
       externalAccountId: String(row.external_account_id),
       displayName: String(row.display_name),
       status: String(row.status),
+      advisorEnabled: Boolean(row.advisor_enabled),
       defaultAssignee: row.default_assignee === null ? null : String(row.default_assignee),
+      version: Number(row.version),
       createdAt: String(row.created_at),
     }));
   }
@@ -266,6 +279,97 @@ export class D1ChannelInboxRepository {
       )
       .first<{ id: string }>();
     return { id: String(row?.id ?? input.id) };
+  }
+
+  /**
+   * Interruptor maestro del asesor por cuenta. Apagarlo también devuelve a
+   * atención humana toda conversación todavía abierta, para que un evento que
+   * ya estaba en vuelo nunca pueda contestar después de la desactivación.
+   */
+  async setChannelAdvisor(input: {
+    accountId: string;
+    enabled: boolean;
+    expectedVersion: number;
+    actor: Readonly<{ userId: string; email: string }>;
+    updatedAt: string;
+  }): Promise<ChannelAdvisorUpdateResult> {
+    const account = await this.d1
+      .prepare(`SELECT version FROM channel_account WHERE id = ?`)
+      .bind(input.accountId)
+      .first<{ version: number }>();
+    if (!account) return { ok: false, reason: "not_found" };
+    if (Number(account.version) !== input.expectedVersion) {
+      return { ok: false, reason: "conflict", currentVersion: Number(account.version) };
+    }
+
+    const nextVersion = input.expectedVersion + 1;
+    const auditId = crypto.randomUUID();
+    const batchResults = await this.d1.batch([
+      this.d1
+        .prepare(
+          `UPDATE channel_account
+              SET advisor_enabled = ?, updated_at = ?, version = ?
+            WHERE id = ? AND version = ?`,
+        )
+        .bind(input.enabled, input.updatedAt, nextVersion, input.accountId, input.expectedVersion),
+      this.d1
+        .prepare(
+          `INSERT INTO admin_audit_log
+             (id, actor_user_id, actor_email, action, resource_type, resource_id,
+              previous_version, next_version, summary_json, occurred_at)
+           SELECT ?, ?, ?, 'zernio.advisor.update', 'channel_account', id, ?, version, ?, ?
+             FROM channel_account
+            WHERE id = ? AND version = ? AND changes() > 0`,
+        )
+        .bind(
+          auditId,
+          input.actor.userId,
+          input.actor.email,
+          input.expectedVersion,
+          JSON.stringify({ advisorEnabled: input.enabled }),
+          input.updatedAt,
+          input.accountId,
+          nextVersion,
+        ),
+      this.d1
+        .prepare(
+          `UPDATE inbox_conversation
+              SET handling = 'HUMAN', updated_at = ?, version = version + 1
+            WHERE channel_account_id = ? AND status != 'CLOSED' AND handling = 'AI' AND ? = false
+              AND changes() > 0
+              AND EXISTS (
+                SELECT 1 FROM channel_account
+                 WHERE id = ? AND version = ? AND advisor_enabled = false
+              )`,
+        )
+        .bind(
+          input.updatedAt,
+          input.accountId,
+          input.enabled,
+          input.accountId,
+          nextVersion,
+        ),
+    ]);
+
+    if (Number(batchResults[0]?.meta?.changes ?? 0) === 0) {
+      const current = await this.d1
+        .prepare(`SELECT version FROM channel_account WHERE id = ?`)
+        .bind(input.accountId)
+        .first<{ version: number }>();
+      return current
+        ? { ok: false, reason: "conflict", currentVersion: Number(current.version) }
+        : { ok: false, reason: "not_found" };
+    }
+
+    const updated = await this.d1
+      .prepare(`SELECT version FROM channel_account WHERE id = ?`)
+      .bind(input.accountId)
+      .first<{ version: number }>();
+    if (!updated) return { ok: false, reason: "not_found" };
+    if (Number(updated.version) !== nextVersion) {
+      return { ok: false, reason: "conflict", currentVersion: Number(updated.version) };
+    }
+    return { ok: true, nextVersion };
   }
 
   /**
@@ -495,7 +599,7 @@ export class D1ChannelInboxRepository {
               participant_external_id, participant_phone_normalized, participant_display_name,
               lead_id, status, handling, assigned_to, last_inbound_at, last_outbound_at,
               created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', 'HUMAN', ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?)
            ON CONFLICT(provider, external_conversation_id) DO UPDATE SET
              participant_display_name =
                COALESCE(excluded.participant_display_name, inbox_conversation.participant_display_name),
@@ -519,6 +623,7 @@ export class D1ChannelInboxRepository {
           input.participantPhoneNormalized,
           input.participantDisplayName,
           input.leadId,
+          input.channelAccount.advisorEnabled ? "AI" : "HUMAN",
           input.channelAccount.defaultAssignee,
           inbound ? input.occurredAt : null,
           inbound ? null : input.occurredAt,
@@ -602,7 +707,8 @@ export class D1ChannelInboxRepository {
         `SELECT c.id, c.provider, c.external_conversation_id, c.platform,
                 c.participant_external_id, c.last_inbound_at, c.handling,
                 c.assigned_to, c.lead_id, c.status,
-                a.id AS account_id, a.external_account_id, a.status AS account_status
+                a.id AS account_id, a.external_account_id, a.status AS account_status,
+                a.advisor_enabled AS account_advisor_enabled
            FROM inbox_conversation c
            JOIN channel_account a ON a.id = c.channel_account_id
           WHERE c.id = ?`,
@@ -624,6 +730,7 @@ export class D1ChannelInboxRepository {
       channelAccountId: String(row.account_id),
       externalAccountId: String(row.external_account_id),
       accountStatus: String(row.account_status),
+      accountAdvisorEnabled: Boolean(row.account_advisor_enabled),
     };
   }
 
@@ -1144,6 +1251,7 @@ export type ChannelInboxRepositoryLike = Pick<
   | "findConversationQueueRow"
   | "listChannelAccounts"
   | "createChannelAccount"
+  | "setChannelAdvisor"
   | "syncChannelAccounts"
   | "findIntegrationAction"
   | "recordIntegrationAction"

@@ -6,7 +6,7 @@ import { PanelShell } from "../_components/PanelShell";
 import { VehicleMediaManager } from "../_components/VehicleMediaManager";
 
 export default async function PanelStockPage() {
-  const { overview, vehicles } = await getAdminPanelData();
+  const { overview, vehicles } = await getAdminPanelData("vehicles");
   return <PanelShell title="Stock" subtitle="Disponibilidad, publicación y precios vigentes.">
     <DemoNotice isDemo={overview.isDemo} />
     <AdminResourceForm resource="vehicle" />

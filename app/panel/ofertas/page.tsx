@@ -5,7 +5,7 @@ import { DemoNotice } from "../_components/PanelCards";
 import { PanelShell } from "../_components/PanelShell";
 
 export default async function OffersPage() {
-  const { overview, offers } = await getAdminPanelData();
+  const { overview, offers } = await getAdminPanelData("offers");
   return <PanelShell title="Ofertas" subtitle="Promociones con ventana y condiciones controladas.">
     <DemoNotice isDemo={overview.isDemo} />
     <AdminResourceForm resource="promotion" />

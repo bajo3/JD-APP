@@ -120,6 +120,7 @@ function seedDatabase() {
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
+  database.exec("ALTER TABLE channel_account ADD COLUMN advisor_enabled INTEGER NOT NULL DEFAULT 0");
   // `seq` es una columna propia del esquema de Postgres (reemplaza el `rowid`
   // implícito de SQLite como desempate estable); las migraciones archivadas no
   // la declaran, así que la base de pruebas la agrega con un trigger que la
@@ -580,4 +581,37 @@ test("la misma clave Zernio con otro comando devuelve conflicto sin escribir", a
     ok: false,
     reason: "idempotency_conflict",
   });
+});
+
+test("apagar el agente del canal devuelve las conversaciones abiertas a una persona y audita", async () => {
+  const database = seedDatabase();
+  database.prepare("UPDATE channel_account SET advisor_enabled = 1 WHERE id = 'acc-1'").run();
+  conversation(database, { id: "conv-agent", lastInboundAt: "2026-09-03T11:00:00.000Z", handling: "AI" });
+  const repository = new D1ChannelInboxRepository(sqliteD1(database));
+
+  const result = await repository.setChannelAdvisor({
+    accountId: "acc-1",
+    enabled: false,
+    expectedVersion: 1,
+    actor: { userId: "seller-1", email: "vendedor@jda.test" },
+    updatedAt: "2026-09-14T12:00:00.000Z",
+  });
+
+  assert.deepEqual(result, { ok: true, nextVersion: 2 });
+  const account = database.prepare("SELECT advisor_enabled, version FROM channel_account WHERE id = 'acc-1'").get();
+  assert.equal(account.advisor_enabled, 0);
+  assert.equal(account.version, 2);
+  assert.equal(database.prepare("SELECT handling FROM inbox_conversation WHERE id = 'conv-agent'").get().handling, "HUMAN");
+  const audit = database.prepare("SELECT action, previous_version, next_version FROM admin_audit_log WHERE resource_id = 'acc-1' ORDER BY rowid DESC LIMIT 1").get();
+  assert.equal(audit.action, "zernio.advisor.update");
+  assert.equal(audit.previous_version, 1);
+  assert.equal(audit.next_version, 2);
+
+  assert.deepEqual(await repository.setChannelAdvisor({
+    accountId: "acc-1",
+    enabled: true,
+    expectedVersion: 1,
+    actor: { userId: "seller-1", email: "vendedor@jda.test" },
+    updatedAt: "2026-09-14T12:01:00.000Z",
+  }), { ok: false, reason: "conflict", currentVersion: 2 });
 });

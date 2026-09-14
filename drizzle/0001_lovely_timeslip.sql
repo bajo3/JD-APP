@@ -1,0 +1,1 @@
+ALTER TABLE "channel_account" ADD COLUMN "advisor_enabled" boolean DEFAULT false NOT NULL;

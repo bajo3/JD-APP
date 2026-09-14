@@ -121,6 +121,13 @@ export async function sendOutboundMessage(
       "La cuenta de mensajería no está activa.",
     );
   }
+  if (input.author.type === "AI" && !context.accountAdvisorEnabled) {
+    throw new ApiError(
+      409,
+      "CHANNEL_ADVISOR_DISABLED",
+      "El agente está desactivado para este canal.",
+    );
+  }
 
   const open = windowIsOpen(context, now);
   if (!open && !input.template) {
@@ -220,6 +227,13 @@ export async function handOverToAdvisor(
       409,
       "WINDOW_CLOSED",
       "La ventana de conversación está cerrada: el asesor no puede responder.",
+    );
+  }
+  if (!context.accountAdvisorEnabled) {
+    throw new ApiError(
+      409,
+      "CHANNEL_ADVISOR_DISABLED",
+      "Activá el agente para este canal desde Configuración antes de pasarle la conversación.",
     );
   }
   await repository.setHandling({

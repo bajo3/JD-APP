@@ -58,6 +58,7 @@ test("database-shaped stock records normalize into domain stock", () => {
       model: "Cronos",
       trim: "Drive",
       year: 2023,
+      mileageKm: 28_100,
       bodyType: "Sedán",
       status: "AVAILABLE",
       priceCents: 2_490_000_000,
@@ -67,6 +68,8 @@ test("database-shaped stock records normalize into domain stock", () => {
   );
   assert.equal(vehicle.brand, "Fiat");
   assert.equal(vehicle.model, "Cronos Drive");
+  assert.equal(vehicle.trim, "Drive");
+  assert.equal(vehicle.mileageKm, 28_100);
   assert.equal(vehicle.type, "car");
   assert.equal(vehicle.price.minorUnits, 2_490_000_000);
   assert.equal(vehicle.validUntil, "2026-08-17T14:00:00.000Z");

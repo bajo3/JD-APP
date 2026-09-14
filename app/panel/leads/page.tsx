@@ -5,7 +5,7 @@ import { DemoNotice } from "../_components/PanelCards";
 import { PanelShell } from "../_components/PanelShell";
 
 export default async function LeadsPage() {
-  const { overview, leads } = await getAdminPanelData();
+  const { overview, leads } = await getAdminPanelData("leads");
   const records = leads.map((lead) => ({id:lead.id,label:lead.name,status:lead.status,version:lead.version}));
   return <PanelShell title="Leads" subtitle="Consultas recibidas y seguimiento comercial.">
     <DemoNotice isDemo={overview.isDemo} />

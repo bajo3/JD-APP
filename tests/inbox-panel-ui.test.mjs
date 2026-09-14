@@ -9,8 +9,10 @@ async function read(path) {
 }
 
 test("conversaciones entra en la navegación del panel", async () => {
-  const shell = await read("app/panel/_components/PanelShell.tsx");
-  assert.match(shell, /'\/panel\/conversaciones','Conversaciones'/);
+  const navigation = await read("app/panel/_components/PanelNavigation.tsx");
+  assert.match(navigation, /\["\/panel\/conversaciones", "Conversaciones"/);
+  assert.match(navigation, /\["\/panel\/configuracion", "Configuración"/);
+  assert.match(navigation, /aria-current=\{active \? "page"/);
 });
 
 test("la cola exige sesión del panel antes de leer nada", async () => {
@@ -90,14 +92,36 @@ test("responder exige Idempotency-Key antes de leer el texto", async () => {
   assert.ok(idempotency >= 0 && idempotency < text);
 });
 
-test("la pantalla de conversaciones administra las cuentas del canal antes de listar la cola", async () => {
-  const source = await read("app/panel/conversaciones/page.tsx");
-  const accountsSection = source.indexOf("Cuentas conectadas");
-  const queueSection = source.indexOf("Conversaciones abiertas");
-  assert.ok(accountsSection >= 0 && accountsSection < queueSection);
-  assert.match(source, /ChannelAccountForm/);
-  assert.match(source, /PanelAuthenticationRequired/);
-  assert.match(source, /PanelAccessError/);
+test("Zernio vive en Configuración y Conversaciones carga solamente la cola", async () => {
+  const conversations = await read("app/panel/conversaciones/page.tsx");
+  const settings = await read("app/panel/configuracion/page.tsx");
+  assert.doesNotMatch(conversations, /ChannelAccountForm|getChannelAccounts/);
+  assert.match(conversations, /href="\/panel\/configuracion"/);
+  assert.match(settings, /ChannelAccountForm/);
+  assert.match(settings, /ChannelAdvisorControls/);
+  assert.match(conversations, /PanelAuthenticationRequired/);
+  assert.match(conversations, /PanelAccessError/);
+});
+
+test("el agente tiene interruptor por canal y permanece apagado por defecto", async () => {
+  const controls = await read("app/panel/_components/ChannelAdvisorControls.tsx");
+  const schema = await read("db/schema.ts");
+  const reply = await read("lib/server/advisor-reply.ts");
+  assert.match(controls, /method: "PATCH"/);
+  assert.match(controls, /expectedVersion: account\.version/);
+  assert.match(schema, /advisorEnabled: boolean\("advisor_enabled"\)\.notNull\(\)\.default\(false\)/);
+  assert.match(reply, /CHANNEL_ADVISOR_DISABLED/);
+});
+
+test("el panel evita listados innecesarios y muestra carga durante la navegación", async () => {
+  const data = await read("lib/server/admin-panel-data.ts");
+  const dashboard = data.slice(
+    data.indexOf("export async function getAdminDashboardData"),
+    data.indexOf("type PanelResource"),
+  );
+  assert.doesNotMatch(dashboard, /listAdminLeads|listAdminStock|listAdminAppraisals|listAdminConsignments|listAdminPromotions|listFinanceVersions/);
+  assert.match(await read("app/panel/conversaciones/loading.tsx"), /Cargando conversaciones/);
+  assert.match(await read("app/panel/configuracion/loading.tsx"), /Cargando configuración/);
 });
 
 test("el panel guía la conexión Zernio sin pedir claves ni IDs manuales", async () => {

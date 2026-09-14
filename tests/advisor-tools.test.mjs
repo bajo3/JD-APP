@@ -107,6 +107,8 @@ test("cada opción llega con lo necesario para simular y con su disponibilidad",
     assert.equal(typeof opcion.vehicleId, "string");
     assert.equal(typeof opcion.vehicleSlug, "string");
     assert.equal(typeof opcion.selectionVersion, "string");
+    assert.ok(opcion.version === null || typeof opcion.version === "string");
+    assert.ok(opcion.kilometrajeKm === null || Number.isSafeInteger(opcion.kilometrajeKm));
     assert.ok(["confirmada", "consultar"].includes(opcion.disponibilidad));
     assert.ok(typeof opcion.estado === "string" && opcion.estado.length > 0);
     if (opcion.disponibilidad === "consultar") {

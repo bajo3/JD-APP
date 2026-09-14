@@ -198,6 +198,71 @@ suite("la cola de conversaciones usa un ORDER BY válido en Postgres real", asyn
   }
 });
 
+suite("el interruptor del agente funciona y audita sobre Postgres real", async () => {
+  const database = new SupabaseD1Database({ connectionString });
+  const repository = new D1ChannelInboxRepository(database);
+  const suffix = crypto.randomUUID().replace(/-/g, "");
+  const accountId = `t_advisor_account_${suffix}`;
+  const externalAccountId = `t_advisor_external_${suffix}`;
+  const conversationId = `t_advisor_conversation_${suffix}`;
+  const actorUserId = `t_advisor_actor_${suffix}`;
+  try {
+    await repository.createChannelAccount({
+      id: accountId,
+      provider: "ZERNIO",
+      platform: "whatsapp",
+      externalAccountId,
+      displayName: "JDA agente remoto",
+      status: "ACTIVE",
+      defaultAssignee: "prueba-remota@jda.test",
+      updatedAt: new Date().toISOString(),
+    });
+    await database.prepare(
+      `INSERT INTO inbox_conversation
+         (id, provider, external_conversation_id, channel_account_id, platform,
+          participant_external_id, status, handling)
+       VALUES (?, 'ZERNIO', ?, ?, 'whatsapp', '5492490000000', 'OPEN', 'AI')`,
+    ).bind(conversationId, `external_${suffix}`, accountId).run();
+
+    const enabled = await repository.setChannelAdvisor({
+      accountId,
+      enabled: true,
+      expectedVersion: 1,
+      actor: { userId: actorUserId, email: "prueba-remota@jda.test" },
+      updatedAt: new Date().toISOString(),
+    });
+    assert.deepEqual(enabled, { ok: true, nextVersion: 2 });
+    const disabled = await repository.setChannelAdvisor({
+      accountId,
+      enabled: false,
+      expectedVersion: 2,
+      actor: { userId: actorUserId, email: "prueba-remota@jda.test" },
+      updatedAt: new Date().toISOString(),
+    });
+    assert.deepEqual(disabled, { ok: true, nextVersion: 3 });
+    assert.deepEqual(
+      await database.prepare("SELECT advisor_enabled, version FROM channel_account WHERE id = ?").bind(accountId).first(),
+      { advisor_enabled: false, version: 3 },
+    );
+    assert.equal(
+      await database.prepare("SELECT handling FROM inbox_conversation WHERE id = ?").bind(conversationId).first("handling"),
+      "HUMAN",
+    );
+    const audits = await database.prepare(
+      "SELECT previous_version, next_version FROM admin_audit_log WHERE actor_user_id = ? ORDER BY next_version",
+    ).bind(actorUserId).all();
+    assert.deepEqual(audits.results, [
+      { previous_version: 1, next_version: 2 },
+      { previous_version: 2, next_version: 3 },
+    ]);
+  } finally {
+    await database.prepare("DELETE FROM admin_audit_log WHERE actor_user_id = ?").bind(actorUserId).run();
+    await database.prepare("DELETE FROM inbox_conversation WHERE id = ?").bind(conversationId).run();
+    await database.prepare("DELETE FROM channel_account WHERE id = ?").bind(accountId).run();
+    await database.close();
+  }
+});
+
 suite("una configuración vacía falla cerrado sin conectar", () => {
   assert.throws(
     () => new SupabaseD1Database({ connectionString: "" }),

@@ -5,7 +5,7 @@ import { DemoNotice } from "../_components/PanelCards";
 import { PanelShell } from "../_components/PanelShell";
 
 export default async function FinancePage() {
-  const { overview, financePlans } = await getAdminPanelData();
+  const { overview, financePlans } = await getAdminPanelData("financePlans");
   return <PanelShell title="Financiación" subtitle="Versiones auditadas de tarifarios y tramos.">
     <DemoNotice isDemo={overview.isDemo} />
     <AdminResourceForm resource="finance" />

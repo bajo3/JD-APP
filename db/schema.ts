@@ -732,6 +732,7 @@ export const channelAccounts = pgTable(
     externalAccountId: text("external_account_id").notNull(),
     displayName: text("display_name").notNull(),
     status: text("status").notNull().default("ACTIVE"),
+    advisorEnabled: boolean("advisor_enabled").notNull().default(false),
     defaultAssignee: text("default_assignee"),
     version: integer("version").notNull().default(1),
     createdAt: createdAt(),

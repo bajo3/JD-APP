@@ -7,6 +7,7 @@ import {
   type AdvisorToolContext,
 } from "./advisor-tools";
 import { MAX_OUTBOUND_TEXT } from "./inbox-outbound";
+import { advisorIsConfigured } from "./advisor-config";
 
 export const ADVISOR_MODEL = "claude-opus-5";
 
@@ -104,7 +105,7 @@ export type AdvisorTurn = Readonly<{
  */
 function anthropicClient(apiKey?: string): AdvisorModelClient {
   const key = (apiKey ?? process.env.ANTHROPIC_API_KEY ?? "").trim();
-  if (key.length < 16) {
+  if (!advisorIsConfigured(key)) {
     throw new ApiError(
       503,
       "ADVISOR_NOT_CONFIGURED",

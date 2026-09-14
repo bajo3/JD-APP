@@ -96,6 +96,7 @@ function inboxDatabase() {
   ]) {
     database.exec(readFileSync(resolve(projectRoot, path), "utf8").replaceAll("--> statement-breakpoint", ""));
   }
+  database.exec("ALTER TABLE channel_account ADD COLUMN advisor_enabled INTEGER NOT NULL DEFAULT 0");
   // `seq` es una columna propia del esquema de Postgres (reemplaza el `rowid`
   // implícito de SQLite como desempate estable); las migraciones archivadas no
   // la declaran, así que la base de pruebas la agrega con un trigger que la

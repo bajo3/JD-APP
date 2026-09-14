@@ -1,4 +1,4 @@
-import { getAdminPanelData } from "@/lib/server/admin-panel-data";
+import { getAdminDashboardData } from "@/lib/server/admin-panel-data";
 import type { FunnelBreakdownRow } from "@/lib/server/funnel-data";
 import { DemoNotice, PanelMetric } from "./_components/PanelCards";
 import { PanelShell } from "./_components/PanelShell";
@@ -9,7 +9,7 @@ const dateOnly = new Intl.DateTimeFormat("es-AR", {
 });
 
 export default async function PanelPage() {
-  const { overview, funnel } = await getAdminPanelData();
+  const { overview, funnel } = await getAdminDashboardData();
   const total = (values: Record<string, number>) => Object.values(values).reduce((sum, value) => sum + value, 0);
   return <PanelShell title="Resumen" subtitle="Actividad calculada desde los registros operativos.">
     <DemoNotice isDemo={overview.isDemo} />

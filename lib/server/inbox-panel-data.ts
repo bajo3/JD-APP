@@ -2,6 +2,7 @@ import {
   D1ChannelInboxRepository,
   type ChannelInboxRepositoryLike,
 } from "@/lib/data/channel-inbox-repository";
+import { getD1Binding } from "@/db";
 import { requirePanelUser, type PanelAuthDependencies } from "./panel-auth";
 
 /** Minutos de espera antes de marcar la conversación "atender pronto" y "sin atender". */
@@ -42,7 +43,9 @@ export type ChannelAccountRow = Readonly<{
   externalAccountId: string;
   displayName: string;
   status: string;
+  advisorEnabled: boolean;
   defaultAssignee: string | null;
+  version: number;
   createdAt: string;
 }>;
 
@@ -167,7 +170,7 @@ function isFollowUpOverdue(followUpAt: string | null, now: Date): boolean {
 
 /**
  * Cuentas del canal para la tarjeta de administración de
- * `/panel/conversaciones`. Sin ninguna cuenta cargada, el webhook no tiene
+ * `/panel/configuracion`. Sin ninguna cuenta cargada, el webhook no tiene
  * a quién enrutar un mensaje entrante.
  */
 export async function getChannelAccounts(runtime: Runtime = {}): Promise<readonly ChannelAccountRow[]> {
@@ -180,7 +183,60 @@ export async function getChannelAccounts(runtime: Runtime = {}): Promise<readonl
     externalAccountId: row.externalAccountId,
     displayName: row.displayName,
     status: row.status,
+    advisorEnabled: row.advisorEnabled,
     defaultAssignee: row.defaultAssignee,
+    version: row.version,
     createdAt: row.createdAt,
   }));
+}
+
+export async function getPanelConfigurationData(runtime: Runtime = {}): Promise<{
+  accounts: readonly ChannelAccountRow[];
+  stock: Readonly<{
+    status: string | null;
+    finishedAt: string | null;
+    recordsSeen: number;
+    recordsChanged: number;
+    availableVehicles: number;
+  }>;
+}> {
+  await requirePanelUser(undefined, runtime.panelAuth);
+  const repository = runtime.repository ?? new D1ChannelInboxRepository();
+  const database = getD1Binding();
+  const [accountRows, latestRun, available] = await Promise.all([
+    repository.listChannelAccounts(),
+    database.prepare(
+      `SELECT status, finished_at, records_seen, records_changed
+         FROM stock_sync_run
+        WHERE provider = 'jd-auto'
+        ORDER BY started_at DESC
+        LIMIT 1`,
+    ).first<Record<string, unknown>>(),
+    database.prepare(
+      `SELECT COUNT(*) AS total
+         FROM vehicle
+        WHERE source = 'jd-auto' AND status = 'AVAILABLE'`,
+    ).first<{ total: number }>(),
+  ]);
+  const accounts = accountRows.map((row) => ({
+    id: row.id,
+    platform: row.platform,
+    externalAccountId: row.externalAccountId,
+    displayName: row.displayName,
+    status: row.status,
+    advisorEnabled: row.advisorEnabled,
+    defaultAssignee: row.defaultAssignee,
+    version: row.version,
+    createdAt: row.createdAt,
+  } satisfies ChannelAccountRow));
+  return {
+    accounts,
+    stock: {
+      status: latestRun ? String(latestRun.status) : null,
+      finishedAt: latestRun?.finished_at ? String(latestRun.finished_at) : null,
+      recordsSeen: Number(latestRun?.records_seen ?? 0),
+      recordsChanged: Number(latestRun?.records_changed ?? 0),
+      availableVehicles: Number(available?.total ?? 0),
+    },
+  };
 }

@@ -6,6 +6,7 @@ import {
   compareCounts,
   dumpTableRows,
   parseArgs as parseBackupArgs,
+  readMigrationChain,
   readSchemaTables,
   topologicalTableOrder,
 } from "../scripts/d1-backup.mjs";
@@ -73,6 +74,17 @@ test("el ensayo compara el esquema completo y no una lista escrita a mano", () =
   ]) {
     assert.ok(DRILL_TABLES.includes(table), `${table} quedó fuera del ensayo de restauración`);
   }
+});
+
+test("el ensayo reconstruye el esquema aplicando toda la cadena de migraciones", () => {
+  const migrationSql = readMigrationChain();
+  const createAccount = migrationSql.indexOf('CREATE TABLE "channel_account"');
+  const addAdvisorSwitch = migrationSql.indexOf(
+    'ALTER TABLE "channel_account" ADD COLUMN "advisor_enabled"',
+  );
+
+  assert.ok(createAccount >= 0, "falta la migración base de channel_account");
+  assert.ok(addAdvisorSwitch > createAccount, "la migración del agente debe aplicarse después de la base");
 });
 
 test("el orden de volcado nunca inserta una fila antes que la que referencia", () => {

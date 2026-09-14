@@ -24,7 +24,7 @@ registerHooks({
   },
 });
 
-const { adminZernioStatus, adminZernioConnect, adminZernioSync, adminZernioWebhook } = await import("../lib/server/zernio-admin.ts");
+const { adminZernioStatus, adminZernioConnect, adminZernioSync, adminZernioWebhook, adminZernioAdvisor } = await import("../lib/server/zernio-admin.ts");
 const { ZernioClient } = await import("../lib/server/zernio-client.ts");
 
 const previousEmails = process.env.PANEL_ALLOWED_EMAILS;
@@ -66,6 +66,7 @@ function repository(overrides = {}) {
     async syncChannelAccounts(input) { return { ok: true, replayed: false, synced: input.accounts.length }; },
     async findIntegrationAction() { return null; },
     async recordIntegrationAction() { return "created"; },
+    async setChannelAdvisor() { return { ok: true, nextVersion: 2 }; },
     ...overrides,
   };
 }
@@ -100,7 +101,7 @@ test("OAuth revalida el perfil y sólo devuelve una URL HTTPS del proveedor", as
     auth, client: client({ async getConnectUrl(input) { seen = input; return "https://zernio.com/connect/ok"; } }), apiKey: "sk_clave_configurada", siteUrl: "https://jd.example",
   });
   assert.equal(response.status, 200);
-  assert.equal(seen.redirectUrl, "https://jd.example/panel/conversaciones?zernio=callback");
+  assert.equal(seen.redirectUrl, "https://jd.example/panel/configuracion?zernio=callback");
 });
 
 test("sync ignora datos inventados por el cliente y usa la cuenta verificada", async () => {
@@ -125,6 +126,47 @@ test("sync rechaza un accountId ajeno al perfil sin escribir", async () => {
   }), { auth, client: client(), apiKey: "sk_clave_configurada", repository: repository({ async syncChannelAccounts() { writes += 1; return { ok: true }; } }) });
   assert.equal(response.status, 422);
   assert.equal(writes, 0);
+});
+
+test("el interruptor del agente exige versión y sólo persiste datos validados", async () => {
+  let persisted;
+  const response = await adminZernioAdvisor(new Request("http://local/api/v1/admin/zernio", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId: "account-1", enabled: true, expectedVersion: 4 }),
+  }), {
+    auth,
+    advisorApiKey: "sk-ant-clave-configurada",
+    repository: repository({
+      async setChannelAdvisor(input) {
+        persisted = input;
+        return { ok: true, nextVersion: 5 };
+      },
+    }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(persisted.accountId, "account-1");
+  assert.equal(persisted.enabled, true);
+  assert.equal(persisted.expectedVersion, 4);
+  assert.equal(persisted.actor.userId, "seller-1");
+  assert.deepEqual(JSON.parse(await response.text()).data, {
+    accountId: "account-1", advisorEnabled: true, version: 5,
+  });
+});
+
+test("el interruptor del agente falla cerrado con conflicto de versión", async () => {
+  const response = await adminZernioAdvisor(new Request("http://local/api/v1/admin/zernio", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId: "account-1", enabled: false, expectedVersion: 3 }),
+  }), {
+    auth,
+    repository: repository({
+      async setChannelAdvisor() { return { ok: false, reason: "conflict", currentVersion: 4 }; },
+    }),
+  });
+  assert.equal(response.status, 409);
+  assert.equal(JSON.parse(await response.text()).error.code, "ADMIN_VERSION_CONFLICT");
 });
 
 test("ensure crea el webhook fijo y test reutiliza el webhook existente", async () => {

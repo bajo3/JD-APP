@@ -1,0 +1,24 @@
+/* Panel operativo: navegación, configuración e indicadores de carga. */
+.panel-nav a:first-child:not(.is-active){background:transparent;color:#aebdb7}
+.panel-nav a.is-active{background:#2c443e;color:#fff}
+.panel-logo{width:132px;height:auto;border-radius:4px}
+.panel-card+.panel-card{margin-top:18px}
+.settings-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.panel-metric .metric-word{font-size:21px;letter-spacing:-.02em}
+.settings-card .panel-card-head{align-items:flex-start}
+.advisor-channel-settings .channel-account-list{margin-bottom:0}
+.advisor-channel-settings .channel-account-list li{display:grid;grid-template-columns:auto minmax(160px,1fr) auto auto;gap:12px}
+.channel-platform-mark{display:grid;place-items:center!important;flex:none!important;width:34px;height:34px;border-radius:9px;background:#f8e2ef;color:#b8287b!important;font-size:12px!important;font-weight:900}
+.channel-account-copy{display:flex!important;flex-direction:column;gap:3px;color:inherit!important}
+.channel-account-copy strong{font-size:13px}.channel-account-copy small{color:var(--muted);font-size:11px}
+.advisor-status{display:inline-flex!important;align-items:center;justify-content:center;min-height:29px;padding:0 10px;border-radius:999px;background:#eef1ee;color:#65736e!important;font-size:10px!important;font-weight:900;white-space:nowrap}
+.advisor-status.is-enabled{background:#e8f3eb;color:#28613c!important}
+.settings-safety-note{margin:16px 0 0;padding:12px 14px;border-left:3px solid #4d835f;border-radius:0 7px 7px 0;background:#f0f7f2;color:#365c43;font-size:11px;line-height:1.55}
+.settings-warning{margin:14px 0 0;padding:11px 13px;border-left:3px solid #d39532;border-radius:0 7px 7px 0;background:#fff8eb;color:#75571f;font-size:11px;line-height:1.5}
+.settings-source-status{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0 0}.settings-source-status div{padding:12px;border:1px solid #e1e7e2;border-radius:8px;background:#fbfdfb}.settings-source-status dt{margin-bottom:5px;color:#77847f;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.settings-source-status dd{margin:0;color:#1e2c28;font-size:12px;font-weight:750}
+.panel-loading{display:flex;flex-direction:column;gap:14px;padding:42px clamp(22px,4vw,60px);min-height:60vh;background:#f5f7f4}
+.panel-loading-line,.panel-loading-card{display:block;overflow:hidden;border-radius:8px;background:linear-gradient(90deg,#e8ece9 25%,#f6f8f6 50%,#e8ece9 75%);background-size:200% 100%;animation:panel-shimmer 1.25s infinite}
+.panel-loading-line{width:min(440px,75%);height:16px}.panel-loading-line.is-title{width:min(280px,60%);height:38px}.panel-loading-card{height:260px;margin-top:12px}
+@keyframes panel-shimmer{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.panel-loading-line,.panel-loading-card{animation:none}}
+@media(max-width:760px){.settings-metrics,.settings-source-status{grid-template-columns:1fr}.advisor-channel-settings .channel-account-list li{grid-template-columns:auto 1fr}.advisor-status,.advisor-channel-settings .panel-action{grid-column:2}.advisor-channel-settings .panel-action{width:100%}}

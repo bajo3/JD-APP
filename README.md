@@ -302,6 +302,7 @@ de otra cuenta y cierre de sesión. No registrar los valores en Git ni en logs.
 
 - `/panel` — resumen operativo, embudo comercial y desgloses por canal, vehículo y responsable calculados desde Supabase.
 - `/panel/conversaciones` — cola multicanal, asignación, seguimiento interno y respuesta manual.
+- `/panel/configuracion` — conexión y webhook de Zernio, estado de JD-Auto e interruptor del agente por canal.
 - `/panel/leads` — pipeline y cambios de etapa.
 - `/panel/stock` — alta y ciclo de publicación del inventario.
 - `/panel/tasaciones` — revisión humana y aprobación de rangos.
@@ -313,6 +314,13 @@ de otra cuenta y cierre de sesión. No registrar los valores en Git ni en logs.
 Las rutas protegidas viven en `/api/v1/admin/**`. Las altas usan
 `Idempotency-Key`, las ediciones usan `expectedVersion` y cada mutación deja
 un registro de auditoría atribuido al usuario interno.
+
+El agente queda apagado por defecto en cada cuenta conectada. Al activarlo,
+las conversaciones nuevas de ese canal nacen en modo asesor; las que ya están
+en manos de una persona no cambian. Al apagarlo, toda conversación abierta que
+estuviera en modo asesor vuelve a atención humana y los envíos de IA en vuelo
+se rechazan antes de llegar a Zernio. Sin `ANTHROPIC_API_KEY` no se puede
+activar ningún canal.
 
 ## Estructura relevante
 
