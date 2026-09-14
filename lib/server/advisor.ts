@@ -30,6 +30,15 @@ Cómo hablás:
 - Español rioplatense, de vos, natural y breve. Estás en un chat, no escribiendo un folleto.
 - Mensajes cortos. Una idea por mensaje. Nada de listas largas ni de mayúsculas para gritar.
 - No usás menús numerados ni pedís que elijan opciones: conversás.
+- No repetís un dato que el cliente ya confirmó. Lo reconocés y seguís desde ahí.
+- Si faltan varios datos, preguntás sólo uno por vez y elegís el próximo que
+  hace falta para avanzar; nunca mandás una lista de tres preguntas.
+- Interpretás expresiones coloquiales como "40 lucas" o "100 luquitas" como
+  montos en pesos, pero no inventás un total cuando la persona dice "depende"
+  o "lo menos posible".
+- Si un mensaje tiene un error o una frase ambigua, lo decís con naturalidad y
+  pedís una aclaración concreta. No lo convertís a la fuerza en auto, SUV,
+  pickup, marca o presupuesto.
 
 Qué averiguás, sin interrogar (preguntá de a una y sólo lo que falte):
 - cuánta plata tiene disponible en total;
@@ -105,6 +114,11 @@ export type AdvisorTurn = Readonly<{
     | "escalated_model_error"
     | "escalated_refusal";
   toolCalls: readonly Readonly<{ name: string; ok: boolean; code?: string }>[];
+}>;
+
+export type AdvisorContextSummary = Readonly<{
+  /** Hechos extraídos de los mensajes del cliente; nunca son cálculos comerciales. */
+  text: string;
 }>;
 
 /**
@@ -356,10 +370,16 @@ function defaultModel(runtime: AdvisorRuntime): AdvisorModelClient {
 }
 
 function textOf(content: readonly Record<string, unknown>[]): string {
-  return content
-    .filter((block) => block.type === "text" && typeof block.text === "string")
-    .map((block) => String(block.text).trim())
-    .filter((text) => text.length > 0)
+  const parts: string[] = [];
+  let previous: string | null = null;
+  for (const block of content) {
+    if (block.type !== "text" || typeof block.text !== "string") continue;
+    const text = String(block.text).trim();
+    if (text.length === 0 || text === previous) continue;
+    parts.push(text);
+    previous = text;
+  }
+  return parts
     .join("\n\n")
     .slice(0, MAX_OUTBOUND_TEXT);
 }
@@ -390,6 +410,7 @@ export async function runAdvisorTurn(
     conversationId: string;
     history: readonly AdvisorMessage[];
     message: string;
+    contextSummary?: AdvisorContextSummary | string;
   },
   runtime: AdvisorRuntime = {},
 ): Promise<AdvisorTurn> {
@@ -421,6 +442,26 @@ export async function runAdvisorTurn(
 
   const model = runtime.model ?? defaultModel(runtime);
 
+  const systemBlocks: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: ADVISOR_SYSTEM_PROMPT,
+      // El prompt base y las herramientas son estables: se cachean para que
+      // cada mensaje del cliente no vuelva a pagarlos.
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+  const contextSummary =
+    typeof input.contextSummary === "string"
+      ? input.contextSummary.trim()
+      : input.contextSummary?.text.trim() ?? "";
+  if (contextSummary) {
+    systemBlocks.push({
+      type: "text",
+      text: `MEMORIA FACTUAL DE ESTA CONVERSACIÓN:\n${contextSummary}`,
+    });
+  }
+
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
     let response: AdvisorModelResponse;
     try {
@@ -431,15 +472,7 @@ export async function runAdvisorTurn(
         // Una charla de WhatsApp no necesita el esfuerzo máximo; la exactitud
         // no depende del modelo sino de las herramientas.
         output_config: { effort: "medium" },
-        system: [
-          {
-            type: "text",
-            text: ADVISOR_SYSTEM_PROMPT,
-            // El prompt y las herramientas son estables: se cachean para que
-            // cada mensaje del cliente no vuelva a pagarlos.
-            cache_control: { type: "ephemeral" },
-          },
-        ],
+        system: systemBlocks,
         tools: ADVISOR_TOOLS,
         messages,
       });

@@ -148,6 +148,18 @@ test("el asesor contesta con el texto del modelo cuando no necesita herramientas
   assert.equal(seen[0].tools.length, 8);
 });
 
+test("la salida no repite bloques de texto idénticos", async () => {
+  const { client } = scriptedModel([{
+    stop_reason: "end_turn",
+    content: [
+      { type: "text", text: "Perfecto, lo reviso." },
+      { type: "text", text: "Perfecto, lo reviso." },
+    ],
+  }]);
+  const result = await turn(client);
+  assert.equal(result.reply, "Perfecto, lo reviso.");
+});
+
 test("una respuesta vacía escala en lugar de improvisar", async () => {
   const calls = [];
   const { client } = scriptedModel([{ stop_reason: "end_turn", content: [] }]);

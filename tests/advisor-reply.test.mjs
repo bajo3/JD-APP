@@ -52,7 +52,7 @@ registerHooks({
 });
 
 const { handleZernioWebhook } = await import("../lib/server/zernio-webhook.ts");
-const { replyIfAdvisorHandles } = await import("../lib/server/advisor-reply.ts");
+const { buildAdvisorContext, replyIfAdvisorHandles, toHistory } = await import("../lib/server/advisor-reply.ts");
 const { D1ChannelInboxRepository } = await import("../lib/data/channel-inbox-repository.ts");
 
 const SECRET = "un-secreto-de-webhook-suficientemente-largo";
@@ -209,6 +209,34 @@ function post(body, runtime) {
     { secret: SECRET, now: NOW, ...runtime },
   );
 }
+
+test("la memoria del asesor conserva los datos confirmados y no repite preguntas", () => {
+  const memory = buildAdvisorContext([
+    { direction: "incoming", text: "Y hoy, 40 Luquitas" },
+    { direction: "outgoing", text: "Perfecto. ¿Cuánta plata tenés disponible en total y cuánto podés poner de anticipo?" },
+    { direction: "incoming", text: "Tengo 100 Lucas de anticipo, 40 Lucas de cuota máxima y en total me gustaría pagar lo menos posible" },
+    { direction: "incoming", text: "BMW" },
+  ], "BMW");
+  assert.match(memory.text, /Cuota máxima: \$40\.000 ARS/);
+  assert.match(memory.text, /Anticipo: \$100\.000 ARS/);
+  assert.match(memory.text, /Presupuesto total disponible: sin monto confirmado/);
+  assert.match(memory.text, /Marca: BMW/);
+  assert.match(memory.text, /no vuelvas a pedir un dato/);
+});
+
+test("el historial no duplica un saliente confirmado por Zernio", () => {
+  assert.deepEqual(
+    toHistory([
+      { direction: "incoming", text: "BMW" },
+      { direction: "outgoing", text: "¿Buscás auto o SUV?" },
+      { direction: "outgoing", text: "¿Buscás auto o SUV?" },
+    ]),
+    [
+      { role: "user", content: "BMW" },
+      { role: "assistant", content: "¿Buscás auto o SUV?" },
+    ],
+  );
+});
 
 test("un mensaje entrante en modo asesor se contesta y queda registrado", async () => {
   const { repository, sends, outbound, rows } = harness({ handling: "AI" });

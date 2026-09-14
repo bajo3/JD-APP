@@ -2,7 +2,12 @@ import {
   D1ChannelInboxRepository,
   type ChannelInboxRepositoryLike,
 } from "@/lib/data/channel-inbox-repository";
-import { runAdvisorTurn, type AdvisorMessage, type AdvisorRuntime } from "./advisor";
+import {
+  runAdvisorTurn,
+  type AdvisorContextSummary,
+  type AdvisorMessage,
+  type AdvisorRuntime,
+} from "./advisor";
 import {
   sendOutboundMessage,
   windowIsOpen,
@@ -24,15 +29,163 @@ export type AdvisorReplyRuntime = Readonly<{
   now?: Date;
 }>;
 
-function toHistory(
+export function toHistory(
   rows: readonly { direction: string; text: string | null }[],
 ): AdvisorMessage[] {
-  return rows
-    .filter((row) => typeof row.text === "string" && row.text.trim().length > 0)
-    .map((row) => ({
+  const history: AdvisorMessage[] = [];
+  for (const row of rows) {
+    if (typeof row.text !== "string" || row.text.trim().length === 0) continue;
+    const next = {
       role: row.direction === "outgoing" ? ("assistant" as const) : ("user" as const),
       content: String(row.text).slice(0, 4_000),
-    }));
+    };
+    // Zernio confirma los salientes con otro evento. Si el identificador del
+    // proveedor no coincide con el de la respuesta de envío, el texto puede
+    // entrar dos veces seguidas; no se lo mostramos así al modelo.
+    const previous = history.at(-1);
+    if (previous?.role === next.role && previous.content === next.content) continue;
+    history.push(next);
+  }
+  return history;
+}
+
+const AMOUNT_TOKEN = /(\d[\d.,]*)\s*(millones?|m(?:ill[oó]n)?|mil|lucas?|luquitas?|k)?/gi;
+const AMOUNT_TOKEN_SOURCE = String.raw`\d[\d.,]*\s*(?:millones?|m(?:ill[oó]n)?|mil|lucas?|luquitas?|k)?`;
+const VEHICLE_BRANDS = [
+  "audi", "bmw", "byd", "chery", "chevrolet", "citroen", "fiat", "ford", "honda",
+  "hyundai", "jeep", "kia", "mercedes", "nissan", "peugeot", "ram", "renault",
+  "toyota", "volkswagen", "volvo",
+] as const;
+const VEHICLE_TYPES: Readonly<Record<string, string>> = {
+  auto: "auto",
+  autos: "auto",
+  sedan: "auto",
+  sedán: "auto",
+  hatchback: "auto",
+  suv: "SUV",
+  pickup: "pickup",
+  camioneta: "SUV o pickup",
+  utilitario: "utilitario",
+  furgoneta: "utilitario",
+};
+
+function amountValue(raw: string, suffix?: string): number | null {
+  const normalized = raw.replace(/\s/g, "");
+  const numeric = Number(
+    normalized.includes(",") && normalized.includes(".")
+      ? normalized.replace(/\./g, "").replace(",", ".")
+      : normalized.includes(",")
+        ? normalized.replace(",", ".")
+        : normalized.replace(/\./g, ""),
+  );
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const lower = (suffix ?? "").toLowerCase();
+  const multiplier = lower.startsWith("mill") || lower === "m" ? 1_000_000 :
+    lower === "mil" || lower.startsWith("luc") || lower === "k" ? 1_000 : 1;
+  const value = Math.round(numeric * multiplier);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+function parseAmountToken(token: string): number | null {
+  const match = token.trim().match(/^(\d[\d.,]*)\s*(millones?|m(?:ill[oó]n)?|mil|lucas?|luquitas?|k)?$/i);
+  return match ? amountValue(match[1] ?? "", match[2]) : null;
+}
+
+function amountForLabel(text: string, label: RegExp): number | null {
+  const source = `(?:${label.source})`;
+  // En el español de WhatsApp el importe suele ir antes ("100 lucas de
+  // anticipo") o después ("anticipo: 100 lucas"). Probamos ambas formas para
+  // no confundir el anticipo con la cuota que aparece en la misma oración.
+  const before = new RegExp(`(${AMOUNT_TOKEN_SOURCE})\\s*(?:de\\s+)?${source}`, "i").exec(text);
+  const after = new RegExp(`${source}\\s*(?:máxima|maxima|mensual)?\\s*(?:es|de|:)?\\s*(${AMOUNT_TOKEN_SOURCE})`, "i").exec(text);
+  return parseAmountToken(before?.[1] ?? after?.[1] ?? "");
+}
+
+function firstAmount(text: string): number | null {
+  for (const match of text.matchAll(AMOUNT_TOKEN)) {
+    const value = amountValue(match[1] ?? "", match[2]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function moneyLabel(value: number | null): string {
+  return value === null ? "sin monto confirmado" : `$${value.toLocaleString("es-AR")} ARS`;
+}
+
+function factLine(label: string, value: string): string {
+  return `- ${label}: ${value}`;
+}
+
+/**
+ * Resume sólo hechos que se pueden leer de la charla. Sirve para que el
+ * modelo no dependa de interpretar una cadena larga de WhatsApp y para que
+ * una respuesta evasiva no borre lo que ya estaba confirmado.
+ */
+export function buildAdvisorContext(
+  rows: readonly { direction: string; text: string | null }[],
+  currentMessage = "",
+): AdvisorContextSummary {
+  let quota: number | null = null;
+  let downPayment: number | null = null;
+  let budget: number | null = null;
+  let brand: string | null = null;
+  let vehicleType: string | null = null;
+  let lastAmbiguous: string | null = null;
+  let previousAssistant = "";
+
+  for (const row of [...rows, { direction: "incoming", text: currentMessage }]) {
+    const text = typeof row.text === "string" ? row.text.trim() : "";
+    if (!text) continue;
+    if (row.direction === "outgoing") {
+      previousAssistant = text;
+      continue;
+    }
+    const lower = text.toLocaleLowerCase("es-AR");
+    const quotaValue = amountForLabel(text, /cuota|por\s+mes|mensual/i) ??
+      (/cuota|por\s+mes|mensual/i.test(previousAssistant) ? firstAmount(text) : null);
+    if (quotaValue !== null) quota = quotaValue;
+    const downPaymentValue = amountForLabel(text, /anticipo|entrega/i);
+    if (downPaymentValue !== null) downPayment = downPaymentValue;
+    const budgetValue = amountForLabel(
+      text,
+      /presupuesto|plata\s+disponible|disponible\s+en\s+total|total\s+(?:disponible|tengo|sería|seria|es)/i,
+    );
+    if (budgetValue !== null && !/anticipo|entrega/i.test(lower)) budget = budgetValue;
+
+    for (const candidate of VEHICLE_BRANDS) {
+      if (new RegExp(`\\b${candidate}\\b`, "i").test(lower)) {
+        brand = candidate === "bmw" ? "BMW" : candidate[0].toUpperCase() + candidate.slice(1);
+        break;
+      }
+    }
+    for (const [candidate, normalized] of Object.entries(VEHICLE_TYPES)) {
+      if (new RegExp(`\\b${candidate}\\b`, "i").test(lower)) {
+        vehicleType = normalized;
+        lastAmbiguous = null;
+        break;
+      }
+    }
+    if (/\bbusco\b/.test(lower) && /\btraba\b/.test(lower)) lastAmbiguous = text;
+    previousAssistant = "";
+  }
+
+  const lines = [
+    factLine("Cuota máxima", moneyLabel(quota)),
+    factLine("Anticipo", moneyLabel(downPayment)),
+    factLine("Presupuesto total disponible", moneyLabel(budget)),
+    factLine("Marca", brand ?? "no indicada"),
+    factLine("Tipo de vehículo", vehicleType ?? "no indicado"),
+  ];
+  if (lastAmbiguous) {
+    lines.push(`- Frase ambigua pendiente: «${lastAmbiguous.slice(0, 180)}»`);
+    lines.push("- No asumas que «traba» es un tipo de vehículo: pedí que aclare si habla de un auto para trabajar o de otra necesidad.");
+  }
+  lines.push(
+    "- Regla de continuidad: no vuelvas a pedir un dato que figure arriba como confirmado.",
+    "- Próximo paso: preguntá una sola cosa concreta; priorizá el dato que el motor necesita para avanzar.",
+  );
+  return { text: lines.join("\n") };
 }
 
 /**
@@ -64,14 +217,14 @@ export async function replyIfAdvisorHandles(
   // plantillas: no tiene sentido gastar un turno de modelo para no poder hablar.
   if (!windowIsOpen(context, now)) return { status: "skipped", reason: "WINDOW_CLOSED" };
 
-  const history = toHistory(
-    await repository.listRecentMessages(context.id, ADVISOR_HISTORY_LIMIT),
-  );
+  const recentRows = await repository.listRecentMessages(context.id, ADVISOR_HISTORY_LIMIT);
+  const history = toHistory(recentRows);
   // El mensaje que dispara el turno ya está persistido: se saca del historial
   // para no dárselo dos veces al modelo.
   if (history.length > 0 && history[history.length - 1]?.content === input.message) {
     history.pop();
   }
+  const contextSummary = buildAdvisorContext(recentRows, input.message);
 
   const outboundRuntime: OutboundRuntime = {
     ...runtime.outbound,
@@ -82,7 +235,7 @@ export async function replyIfAdvisorHandles(
   let turn;
   try {
     turn = await runAdvisorTurn(
-      { conversationId: context.id, history, message: input.message },
+      { conversationId: context.id, history, message: input.message, contextSummary },
       {
         ...runtime.advisor,
         ...(runtime.now ? { now } : {}),
