@@ -5,6 +5,7 @@ import {
 import {
   runAdvisorTurn,
   type AdvisorContextSummary,
+  type AdvisorImage,
   type AdvisorMessage,
   type AdvisorRuntime,
 } from "./advisor";
@@ -29,21 +30,89 @@ export type AdvisorReplyRuntime = Readonly<{
   now?: Date;
 }>;
 
+type AdvisorHistoryRow = Readonly<{
+  direction: string;
+  text: string | null;
+  attachmentsJson?: string;
+}>;
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringField(source: Record<string, unknown> | null, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+/**
+ * Zernio entrega los adjuntos de Instagram/Facebook como enlaces CDN HTTPS.
+ * Sólo exponemos imágenes, como máximo dos y sin credenciales embebidas.
+ */
+export function imageAttachments(attachmentsJson: string | null | undefined): AdvisorImage[] {
+  if (!attachmentsJson) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(attachmentsJson);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const images: AdvisorImage[] = [];
+  for (const raw of parsed) {
+    const attachment = record(raw);
+    const payload = record(attachment?.payload);
+    const type = stringField(attachment, "type", "attachmentType")?.toLowerCase();
+    const contentType = stringField(attachment, "contentType", "mimeType")?.toLowerCase();
+    const rawUrl = stringField(attachment, "url", "imageUrl", "attachmentUrl") ??
+      stringField(payload, "url", "imageUrl");
+    if (!rawUrl || (type !== "image" && !contentType?.startsWith("image/"))) continue;
+    try {
+      const url = new URL(rawUrl);
+      if (url.protocol !== "https:" || url.username || url.password || url.href.length > 8_192) continue;
+      if (!images.some((image) => image.url === url.href)) images.push({ url: url.href });
+    } catch {
+      continue;
+    }
+    if (images.length === 2) break;
+  }
+  return images;
+}
+
 export function toHistory(
-  rows: readonly { direction: string; text: string | null }[],
+  rows: readonly AdvisorHistoryRow[],
+  includeImages = false,
 ): AdvisorMessage[] {
   const history: AdvisorMessage[] = [];
   for (const row of rows) {
-    if (typeof row.text !== "string" || row.text.trim().length === 0) continue;
+    const text = typeof row.text === "string" ? row.text.trim().slice(0, 4_000) : "";
+    const images = includeImages ? imageAttachments(row.attachmentsJson) : [];
+    if (!text && images.length === 0) continue;
     const next = {
       role: row.direction === "outgoing" ? ("assistant" as const) : ("user" as const),
-      content: String(row.text).slice(0, 4_000),
+      content: images.length > 0
+        ? [
+            { type: "text" as const, text: text || "El cliente envió una imagen sin texto." },
+            ...images.map((image) => ({
+              type: "image" as const,
+              source: { type: "url" as const, url: image.url },
+            })),
+          ]
+        : text,
     };
     // Zernio confirma los salientes con otro evento. Si el identificador del
     // proveedor no coincide con el de la respuesta de envío, el texto puede
     // entrar dos veces seguidas; no se lo mostramos así al modelo.
     const previous = history.at(-1);
-    if (previous?.role === next.role && previous.content === next.content) continue;
+    if (
+      previous?.role === next.role &&
+      JSON.stringify(previous.content) === JSON.stringify(next.content)
+    ) continue;
     history.push(next);
   }
   return history;
@@ -200,6 +269,7 @@ export async function replyIfAdvisorHandles(
   input: {
     conversationId: string;
     message: string;
+    attachmentsJson?: string;
     /** Clave estable del mensaje entrante, para que un reintento no duplique el envío. */
     inboundMessageId: string;
   },
@@ -218,13 +288,23 @@ export async function replyIfAdvisorHandles(
   if (!windowIsOpen(context, now)) return { status: "skipped", reason: "WINDOW_CLOSED" };
 
   const recentRows = await repository.listRecentMessages(context.id, ADVISOR_HISTORY_LIMIT);
+  const includeImages = context.platform === "instagram" || context.platform === "messenger";
+  // Los CDN de Meta expiran. La imagen actual se procesa en el mismo webhook;
+  // el historial conserva el texto, no reenvía enlaces vencidos al modelo.
   const history = toHistory(recentRows);
   // El mensaje que dispara el turno ya está persistido: se saca del historial
   // para no dárselo dos veces al modelo.
-  if (history.length > 0 && history[history.length - 1]?.content === input.message) {
+  const lastRow = recentRows.at(-1);
+  if (
+    history.length > 0 &&
+    lastRow?.direction === "incoming" &&
+    (lastRow.text ?? "") === input.message &&
+    (lastRow.attachmentsJson ?? "[]") === (input.attachmentsJson ?? "[]")
+  ) {
     history.pop();
   }
   const contextSummary = buildAdvisorContext(recentRows, input.message);
+  const images = includeImages ? imageAttachments(input.attachmentsJson) : [];
 
   const outboundRuntime: OutboundRuntime = {
     ...runtime.outbound,
@@ -235,7 +315,7 @@ export async function replyIfAdvisorHandles(
   let turn;
   try {
     turn = await runAdvisorTurn(
-      { conversationId: context.id, history, message: input.message, contextSummary },
+      { conversationId: context.id, history, message: input.message, images, contextSummary },
       {
         ...runtime.advisor,
         ...(runtime.now ? { now } : {}),

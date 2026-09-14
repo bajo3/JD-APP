@@ -104,9 +104,17 @@ function inboxPlatform(platform: string): string {
   return platform.toLowerCase() === "facebook" ? "messenger" : platform.toLowerCase();
 }
 
-function jsonAttachments(message: Record<string, unknown>): string {
-  const attachments = message.attachments;
-  if (!Array.isArray(attachments) || attachments.length === 0) return "[]";
+function jsonAttachments(
+  message: Record<string, unknown>,
+  metadata: Record<string, unknown> | null,
+): string {
+  const attachments = Array.isArray(message.attachments) ? [...message.attachments] : [];
+  const storyReply = metadata ? readObject(metadata, "storyReply") : null;
+  const storyUrl = storyReply ? readString(storyReply, "storyUrl") : null;
+  if (storyUrl) {
+    attachments.push({ type: "image", url: storyUrl, source: "instagram_story_reply" });
+  }
+  if (attachments.length === 0) return "[]";
   try {
     return JSON.stringify(attachments).slice(0, 16 * 1024);
   } catch {
@@ -302,6 +310,7 @@ async function route(input: {
   );
 
   const rawMessage = readObject(payload, "message");
+  const metadata = readObject(payload, "metadata");
   const messageId = rawMessage ? readString(rawMessage, "id") : null;
   const direction = rawMessage ? readString(rawMessage, "direction") : null;
   const message =
@@ -314,7 +323,7 @@ async function route(input: {
           direction: direction === "outgoing" ? ("outgoing" as const) : ("incoming" as const),
           authorType: direction === "outgoing" ? "BUSINESS" : "CUSTOMER",
           text: typeof rawMessage.text === "string" ? rawMessage.text.slice(0, 8_000) : null,
-          attachmentsJson: jsonAttachments(rawMessage),
+          attachmentsJson: jsonAttachments(rawMessage, metadata),
           occurredAt: readString(rawMessage, "sentAt") ?? nowIso,
         };
 
@@ -357,10 +366,15 @@ async function route(input: {
     occurredAt: message?.occurredAt ?? nowIso,
   });
 
-  // El asesor sólo entra acá, sobre un entrante con texto y una conversación
+  // El asesor sólo entra acá, sobre un entrante renderizable y una conversación
   // que alguien puso en modo asesor. Las conversaciones nacen en `HUMAN`, así
   // que por defecto nadie recibe una respuesta automática.
-  if (type === "message.received" && message && message.direction === "incoming" && message.text) {
+  if (
+    type === "message.received" &&
+    message &&
+    message.direction === "incoming" &&
+    (message.text || message.attachmentsJson !== "[]")
+  ) {
     const conversation = await repository.findConversation(
       ZERNIO_PROVIDER,
       externalConversationId,
@@ -369,7 +383,8 @@ async function route(input: {
       await replyIfAdvisorHandles(
         {
           conversationId: conversation.id,
-          message: message.text,
+          message: message.text ?? "",
+          attachmentsJson: message.attachmentsJson,
           inboundMessageId: message.externalMessageId,
         },
         {

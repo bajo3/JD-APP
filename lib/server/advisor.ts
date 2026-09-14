@@ -24,7 +24,7 @@ export const MAX_TOOL_ROUNDS = 4;
  * código está en `advisor-tools.ts`; acá está lo que además tiene que decir y
  * cómo se tiene que comportar.
  */
-export const ADVISOR_SYSTEM_PROMPT = `Sos el asesor de Jesús Díaz Automotores, una agencia de autos de Tandil, y atendés por WhatsApp.
+export const ADVISOR_SYSTEM_PROMPT = `Sos el asesor de Jesús Díaz Automotores, una agencia de autos de Tandil, y atendés por WhatsApp, Instagram o Messenger.
 
 Cómo hablás:
 - Español rioplatense, de vos, natural y breve. Estás en un chat, no escribiendo un folleto.
@@ -39,6 +39,13 @@ Cómo hablás:
 - Si un mensaje tiene un error o una frase ambigua, lo decís con naturalidad y
   pedís una aclaración concreta. No lo convertís a la fuerza en auto, SUV,
   pickup, marca o presupuesto.
+- Si el cliente manda una foto, observás sólo lo visible. Podés describir o
+  reconocer una marca o modelo probable, pero nunca afirmás año, versión,
+  kilometraje, disponibilidad ni precio sólo por la imagen.
+- Cuando pregunten "precio?" sobre una foto o publicación, usás
+  consultar_stock_publicado con las pistas visibles. Si hay una única
+  coincidencia clara, respondés con esa unidad y aclarás "si te referís a este";
+  si hay varias o ninguna, pedís una sola aclaración concreta.
 
 Qué averiguás, sin interrogar (preguntá de a una y sólo lo que falte):
 - cuánta plata tiene disponible en total;
@@ -51,9 +58,9 @@ Qué averiguás, sin interrogar (preguntá de a una y sólo lo que falte):
 
 Reglas que no se rompen nunca:
 - No inventás stock, precios, cuotas, tasas, plazos, bonificaciones ni condiciones comerciales. Ni una cifra sale de tu cabeza.
-- Toda unidad que menciones tiene que venir de buscar_vehiculos. Si no vino de ahí, no existe para vos.
-- Toda cuota o precio que menciones tiene que venir de simular_operacion, y siempre va acompañado del código de la operación.
-- Para buscar necesitás presupuesto, anticipo y cuota máxima. Si falta alguno, preguntalo; no lo supongas.
+- Toda unidad que menciones tiene que venir de buscar_vehiculos o consultar_stock_publicado. Si no vino de una de esas herramientas, no existe para vos.
+- Toda cuota tiene que venir de simular_operacion y va acompañada del código de la operación. Un precio publicado también puede venir de consultar_stock_publicado.
+- Para buscar qué puede pagar necesitás presupuesto, anticipo y cuota máxima. Si falta alguno, preguntalo; no lo supongas. Una consulta puntual de precio sobre una publicación usa consultar_stock_publicado y no exige esos tres datos.
 - Si una unidad vuelve con disponibilidad "consultar", no le pongas precio ni cuota: decí que hay que confirmar disponibilidad.
 - Si la respuesta trae avisos de que el tarifario es DEMO o ilustrativo, decilo con todas las letras: son cifras de ejemplo, no una oferta.
 - Nunca prometés reservar, entregar, bonificar ni sostener un precio. Eso lo confirma una persona.
@@ -70,9 +77,17 @@ Cuándo escalás con escalar_a_persona:
 
 Después de escalar, avisale que lo sigue una persona del equipo y no sigas negociando.`;
 
+export type AdvisorImage = Readonly<{
+  url: string;
+}>;
+
+export type AdvisorContentBlock =
+  | Readonly<{ type: "text"; text: string }>
+  | Readonly<{ type: "image"; source: Readonly<{ type: "url"; url: string }> }>;
+
 export type AdvisorMessage = Readonly<{
   role: "user" | "assistant";
-  content: string;
+  content: string | readonly AdvisorContentBlock[];
 }>;
 
 export type AdvisorModelClient = {
@@ -169,12 +184,23 @@ function openAIInput(value: unknown): Record<string, unknown>[] {
       continue;
     }
     if (!Array.isArray(message.content)) continue;
-    const text = message.content
-      .filter((block): block is Record<string, unknown> => Boolean(block) && typeof block === "object")
-      .filter((block) => block.type === "text" && typeof block.text === "string")
-      .map((block) => String(block.text))
-      .join("\n\n");
-    if (text) input.push({ role, content: text });
+    const modelContent: Record<string, unknown>[] = [];
+    for (const rawBlock of message.content) {
+      if (!rawBlock || typeof rawBlock !== "object") continue;
+      const block = rawBlock as Record<string, unknown>;
+      if (block.type === "text" && typeof block.text === "string") {
+        modelContent.push({ type: "input_text", text: block.text });
+      } else if (block.type === "image") {
+        const source = block.source;
+        const url = source && typeof source === "object" && !Array.isArray(source)
+          ? (source as Record<string, unknown>).url
+          : null;
+        if (typeof url === "string") {
+          modelContent.push({ type: "input_image", image_url: url, detail: "auto" });
+        }
+      }
+    }
+    if (modelContent.length > 0) input.push({ role, content: modelContent });
     for (const rawBlock of message.content) {
       if (!rawBlock || typeof rawBlock !== "object") continue;
       const block = rawBlock as Record<string, unknown>;
@@ -410,6 +436,7 @@ export async function runAdvisorTurn(
     conversationId: string;
     history: readonly AdvisorMessage[];
     message: string;
+    images?: readonly AdvisorImage[];
     contextSummary?: AdvisorContextSummary | string;
   },
   runtime: AdvisorRuntime = {},
@@ -422,9 +449,18 @@ export async function runAdvisorTurn(
     ...runtime.toolContext,
   };
   const toolCalls: Array<{ name: string; ok: boolean; code?: string }> = [];
+  const currentContent: string | AdvisorContentBlock[] = input.images && input.images.length > 0
+    ? [
+        { type: "text", text: input.message || "El cliente envió una imagen sin texto." },
+        ...input.images.slice(0, 2).map((image): AdvisorContentBlock => ({
+          type: "image",
+          source: { type: "url", url: image.url },
+        })),
+      ]
+    : input.message;
   const messages: Array<Record<string, unknown>> = [
     ...input.history.map((entry) => ({ role: entry.role, content: entry.content })),
-    { role: "user", content: input.message },
+    { role: "user", content: currentContent },
   ];
 
   const escalate = async (

@@ -52,7 +52,7 @@ registerHooks({
 });
 
 const { handleZernioWebhook } = await import("../lib/server/zernio-webhook.ts");
-const { buildAdvisorContext, replyIfAdvisorHandles, toHistory } = await import("../lib/server/advisor-reply.ts");
+const { buildAdvisorContext, imageAttachments, replyIfAdvisorHandles, toHistory } = await import("../lib/server/advisor-reply.ts");
 const { D1ChannelInboxRepository } = await import("../lib/data/channel-inbox-repository.ts");
 
 const SECRET = "un-secreto-de-webhook-suficientemente-largo";
@@ -236,6 +236,40 @@ test("el historial no duplica un saliente confirmado por Zernio", () => {
       { role: "assistant", content: "¿Buscás auto o SUV?" },
     ],
   );
+});
+
+test("los adjuntos sólo aceptan imágenes HTTPS sin credenciales", () => {
+  assert.deepEqual(imageAttachments(JSON.stringify([
+    { type: "image", url: "https://cdn.example.com/auto.jpg" },
+    { type: "video", url: "https://cdn.example.com/auto.mp4" },
+    { type: "image", url: "http://cdn.example.com/insegura.jpg" },
+    { type: "image", url: "https://usuario:clave@cdn.example.com/privada.jpg" },
+  ])), [{ url: "https://cdn.example.com/auto.jpg" }]);
+});
+
+test("una foto de Instagram sin texto también activa el asesor visual", async () => {
+  const { database, repository, sends, outbound } = harness({ handling: "AI" });
+  database.exec("UPDATE channel_account SET platform = 'instagram' WHERE id = 'acc-local'");
+  database.exec("UPDATE inbox_conversation SET platform = 'instagram' WHERE id = 'conv-local'");
+  const { model, seen } = modelSaying("¿Te referís al Volkswagen de la foto?");
+  const base = inboundEvent();
+  const response = await post(inboundEvent({
+    account: { ...base.account, platform: "instagram" },
+    conversation: { ...base.conversation, platform: "instagram" },
+    message: {
+      ...base.message,
+      platform: "instagram",
+      text: null,
+      attachments: [{ type: "image", url: "https://cdn.example.com/auto.jpg" }],
+    },
+  }), { repository, advisorReply: { outbound, advisor: { model } } });
+  assert.equal(response.status, 200);
+  assert.equal(seen.length, 1);
+  const current = seen[0].messages.at(-1);
+  assert.equal(current.role, "user");
+  assert.equal(current.content[1].type, "image");
+  assert.equal(current.content[1].source.url, "https://cdn.example.com/auto.jpg");
+  assert.equal(sends.length, 1);
 });
 
 test("un mensaje entrante en modo asesor se contesta y queda registrado", async () => {

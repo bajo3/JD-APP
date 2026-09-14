@@ -327,6 +327,12 @@ test("en Instagram el participante no es un teléfono y no se inventa uno", asyn
         participantName: "seguidor",
         status: "open",
       },
+      metadata: {
+        storyReply: {
+          storyId: "story-1",
+          storyUrl: "https://cdn.example.com/story-auto.jpg",
+        },
+      },
       message: { ...messageReceived().message, id: "msg-ig", platform: "instagram" },
     }),
   );
@@ -338,6 +344,12 @@ test("en Instagram el participante no es un teléfono y no se inventa uno", asyn
   assert.equal(count("lead"), 0);
   assert.equal(count("lead_event"), 0);
   assert.equal(count("inbox_message"), 1);
+  const [message] = rows("SELECT attachments_json FROM inbox_message");
+  assert.deepEqual(JSON.parse(message.attachments_json), [{
+    type: "image",
+    url: "https://cdn.example.com/story-auto.jpg",
+    source: "instagram_story_reply",
+  }]);
 });
 
 test("Facebook se normaliza como Messenger para coincidir con el panel", async () => {

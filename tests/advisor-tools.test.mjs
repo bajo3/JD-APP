@@ -56,11 +56,12 @@ function context(overrides = {}) {
 }
 
 test("las definiciones no dejan al modelo inventar argumentos", () => {
-  assert.equal(ADVISOR_TOOLS.length, 8);
+  assert.equal(ADVISOR_TOOLS.length, 9);
   const names = ADVISOR_TOOLS.map((tool) => tool.name).sort();
   assert.deepEqual(names, [
     "buscar_vehiculos",
     "confirmar_demanda",
+    "consultar_stock_publicado",
     "cotizar_permuta",
     "escalar_a_persona",
     "registrar_demanda",
@@ -81,6 +82,32 @@ test("las definiciones no dejan al modelo inventar argumentos", () => {
     );
     assert.ok(tool.description.length > 40, `${tool.name} necesita una descripción útil`);
   }
+});
+
+test("una consulta visual sólo devuelve precio desde una coincidencia real de stock", async () => {
+  const result = await runAdvisorTool(
+    "consultar_stock_publicado",
+    { marca: "Volkswagen", modelo: "T-Cross", tipo: "SUV" },
+    context(),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.data.coincidenciaUnica, true);
+  assert.equal(result.data.coincidencias.length, 1);
+  const [vehicle] = result.data.coincidencias;
+  assert.equal(vehicle.vehicleId, "veh-tcross-2022");
+  assert.equal(vehicle.precioPublicado, 32_800_000);
+  assert.equal(vehicle.moneda, "ARS");
+  assert.match(vehicle.ficha, /^\/autos\//);
+});
+
+test("una foto sin pistas suficientes no habilita al agente a inventar una unidad", async () => {
+  const result = await runAdvisorTool(
+    "consultar_stock_publicado",
+    { marca: null, modelo: null, tipo: null },
+    context(),
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "VISUAL_REFERENCE_INSUFFICIENT");
 });
 
 test("la búsqueda nunca devuelve más de tres unidades", async () => {

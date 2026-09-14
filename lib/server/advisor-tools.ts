@@ -9,6 +9,7 @@ import { D1AppraisalRulesetRepository, type AppraisalRulesetRepositoryLike } fro
 import { normalizeDemandCriteria } from "@/lib/domain/demand-matching.mjs";
 import { estimateAppraisalRange } from "@/lib/domain/appraisal-range.mjs";
 import { generateSessionToken, hashSessionToken } from "@/lib/auth/index.mjs";
+import { vehicleDto } from "./dto";
 import { escalateToHuman, type OutboundRuntime } from "./inbox-outbound";
 import { createSimulationResponse } from "./simulation-api";
 
@@ -198,6 +199,24 @@ export const ADVISOR_TOOLS = Object.freeze([
     },
   },
   {
+    name: "consultar_stock_publicado",
+    description:
+      "Consulta precio y disponibilidad del stock real cuando el cliente pregunta por una unidad de una foto, " +
+      "Story o publicación. Usá únicamente marca, modelo o tipo que sean visibles o que el cliente haya dicho. " +
+      "Nunca elijas una coincidencia dudosa como si fuera exacta.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["marca", "modelo", "tipo"],
+      properties: {
+        marca: { type: ["string", "null"], description: "Marca visible o mencionada." },
+        modelo: { type: ["string", "null"], description: "Modelo visible o mencionado." },
+        tipo: { type: ["string", "null"], description: "Tipo visible: auto, SUV, pickup o utilitario." },
+      },
+    },
+  },
+  {
     name: "cotizar_permuta",
     description: "Da un rango preliminar sólo desde el tarifario vigente. Nunca confirma una toma: queda sujeto a revisión física y documental.",
     strict: true,
@@ -354,6 +373,84 @@ function failure(error: unknown): AdvisorToolResult {
     ok: false,
     code: "TOOL_FAILED",
     message: "La herramienta falló. Pasá la conversación a una persona.",
+  };
+}
+
+function normalizedSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+async function consultarStockPublicado(
+  input: Record<string, unknown>,
+  context: AdvisorToolContext,
+): Promise<AdvisorToolResult> {
+  const marca = optionalText(input, "marca", 60);
+  const modelo = optionalText(input, "modelo", 80);
+  const tipo = optionalText(input, "tipo", 40);
+  if (!marca && !modelo && !tipo) {
+    return {
+      ok: false,
+      code: "VISUAL_REFERENCE_INSUFFICIENT",
+      message: "La imagen no alcanza para identificar una unidad. Pedí marca o modelo.",
+    };
+  }
+
+  const access = context.access ?? getDataAccess();
+  const now = context.now ?? new Date();
+  const [stock, profile] = await Promise.all([
+    access.stock.listAvailable(),
+    access.businessProfile.get(),
+  ]);
+  const filters = [marca, modelo, tipo].filter((value): value is string => Boolean(value));
+  const matches = stock.filter((vehicle) => {
+    const haystack = normalizedSearch([
+      vehicle.make,
+      vehicle.model,
+      vehicle.trim,
+      vehicle.bodyType,
+    ].join(" "));
+    return filters.every((filter) => haystack.includes(normalizedSearch(filter)));
+  });
+  const freshnessMinutes = profile?.stockFreshnessMinutes ?? 1_440;
+  const coincidencias = matches.slice(0, MAX_RECOMMENDATIONS).map((vehicle) => {
+    const dto = vehicleDto(vehicle, freshnessMinutes, now);
+    const priceExpiresAt = dto.price.validUntil ? Date.parse(dto.price.validUntil) : Number.NaN;
+    const priceCurrent = !Number.isFinite(priceExpiresAt) || now.getTime() <= priceExpiresAt;
+    const available = dto.availability === "AVAILABLE_TODAY" && priceCurrent;
+    return {
+      vehicleId: dto.id,
+      marca: dto.make,
+      modelo: dto.model,
+      version: dto.trim,
+      anio: dto.year,
+      kilometrajeKm: dto.mileageKm,
+      tipo: dto.bodyType,
+      disponibilidad: available ? "confirmada" : "consultar",
+      precioPublicado: available ? Math.round(dto.price.cents) / 100 : null,
+      moneda: available ? dto.price.currency : null,
+      ficha: `/autos/${encodeURIComponent(dto.slug)}`,
+      demo: dto.demo,
+    };
+  });
+
+  return {
+    ok: true,
+    data: {
+      coincidencias,
+      totalCoincidencias: matches.length,
+      coincidenciaUnica: matches.length === 1,
+      instruccion:
+        matches.length === 1
+          ? "Presentalo en condicional: «si te referís a este»."
+          : "No elijas uno por tu cuenta; pedí una sola aclaración para identificar la publicación.",
+      fuente: access.source,
+      consultadoEn: now.toISOString(),
+    },
   };
 }
 
@@ -895,6 +992,7 @@ export async function runAdvisorTool(
       : {};
   try {
     if (name === "buscar_vehiculos") return await buscarVehiculos(args, context);
+    if (name === "consultar_stock_publicado") return await consultarStockPublicado(args, context);
     if (name === "simular_operacion") return await simularOperacion(args, context);
     if (name === "registrar_demanda") return await registrarDemanda(args, context);
     if (name === "confirmar_demanda") return await confirmarDemanda(args, context);

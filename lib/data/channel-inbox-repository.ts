@@ -1149,23 +1149,36 @@ export class D1ChannelInboxRepository {
   async listRecentMessages(
     conversationId: string,
     limit = 20,
-  ): Promise<Array<{ direction: string; authorType: string; text: string | null; occurredAt: string }>> {
+  ): Promise<Array<{
+    direction: string;
+    authorType: string;
+    text: string | null;
+    attachmentsJson: string;
+    occurredAt: string;
+  }>> {
     const result = await this.d1
       .prepare(
-        `SELECT direction, author_type, text, occurred_at
+        `SELECT direction, author_type, text, attachments_json, occurred_at
            FROM inbox_message
           WHERE conversation_id = ?
           ORDER BY occurred_at DESC, seq DESC
           LIMIT ?`,
       )
       .bind(conversationId, Math.max(1, Math.min(limit, 100)))
-      .all<{ direction: string; author_type: string; text: string | null; occurred_at: string }>();
+      .all<{
+        direction: string;
+        author_type: string;
+        text: string | null;
+        attachments_json: string;
+        occurred_at: string;
+      }>();
     const rows = result.results ?? [];
     return rows
       .map((row) => ({
         direction: String(row.direction),
         authorType: String(row.author_type),
         text: row.text === null ? null : String(row.text),
+        attachmentsJson: String(row.attachments_json ?? "[]"),
         occurredAt: String(row.occurred_at),
       }))
       .reverse();

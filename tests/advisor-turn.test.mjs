@@ -145,7 +145,7 @@ test("el asesor contesta con el texto del modelo cuando no necesita herramientas
   assert.equal(seen[0].model, ADVISOR_MODEL);
   assert.equal(seen[0].thinking.type, "adaptive");
   assert.equal(seen[0].system[0].cache_control.type, "ephemeral");
-  assert.equal(seen[0].tools.length, 8);
+  assert.equal(seen[0].tools.length, 9);
 });
 
 test("la salida no repite bloques de texto idénticos", async () => {
@@ -348,6 +348,38 @@ test("OpenAI devuelve texto al contrato interno sin exponer su respuesta cruda",
   assert.deepEqual(response, {
     stop_reason: "end_turn",
     content: [{ type: "text", text: "¿Qué presupuesto manejás?" }],
+  });
+});
+
+test("OpenAI recibe la foto de Instagram junto con la pregunta del cliente", async () => {
+  let requestBody;
+  const client = openAIClient("sk-openai-clave-de-prueba", async (_url, init) => {
+    requestBody = JSON.parse(String(init.body));
+    return Response.json({
+      status: "completed",
+      output: [{
+        type: "message",
+        content: [{ type: "output_text", text: "¿Te referís a este Volkswagen?" }],
+      }],
+    });
+  });
+  await client.createMessage({
+    system: "reglas",
+    tools: [],
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: "precio?" },
+        { type: "image", source: { type: "url", url: "https://cdn.example.com/t-cross.jpg" } },
+      ],
+    }],
+  });
+  assert.deepEqual(requestBody.input[0], {
+    role: "user",
+    content: [
+      { type: "input_text", text: "precio?" },
+      { type: "input_image", image_url: "https://cdn.example.com/t-cross.jpg", detail: "auto" },
+    ],
   });
 });
 
