@@ -44,7 +44,7 @@ export default async function ConfiguracionPage() {
           </div>
         </div>
         <ChannelAdvisorControls accounts={accounts} canActivate={canActivateAdvisor} />
-        <p className="settings-safety-note">El agente consulta únicamente el stock vigente de JD‑App, sincronizado desde JD‑Auto. Si la IA no está configurada o no encuentra un dato, deriva la conversación sin inventarlo.</p>
+        <p className="settings-safety-note">El agente entiende texto, fotos y notas de voz, y consulta únicamente el stock vigente de JD‑App sincronizado desde JD‑Auto. Si no puede entender o verificar un dato, deriva la conversación sin inventarlo.</p>
       </section>
 
       <section className="panel-card settings-card" aria-labelledby="zernio-title">

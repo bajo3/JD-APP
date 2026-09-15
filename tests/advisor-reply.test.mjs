@@ -272,6 +272,40 @@ test("una foto de Instagram sin texto también activa el asesor visual", async (
   assert.equal(sends.length, 1);
 });
 
+test("una nota de voz se transcribe antes de responder", async () => {
+  const { repository, sends, outbound } = harness({ handling: "AI" });
+  const { model, seen } = modelSaying("Sí, te entendí: buscás un automático para trabajar.");
+  const base = inboundEvent();
+  const fetchImpl = async (url) => String(url).includes("api.openai.com")
+    ? Response.json({ text: "Busco un automático para trabajar" })
+    : new Response(new Uint8Array([1, 2, 3]), { headers: { "content-length": "3" } });
+  const response = await post(inboundEvent({
+    message: {
+      ...base.message,
+      text: null,
+      attachments: [{
+        type: "audio",
+        contentType: "audio/ogg",
+        url: "https://zernio.com/api/v1/whatsapp/media/media-1?accountId=zernio-acc-1",
+      }],
+    },
+  }), {
+    repository,
+    advisorReply: {
+      outbound,
+      advisor: { model },
+      audio: {
+        fetchImpl,
+        openAIApiKey: "openai-test-key-long-enough",
+        zernioApiKey: "zernio-test-key-long-enough",
+      },
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.match(seen[0].messages.at(-1).content, /Busco un automático para trabajar/);
+  assert.equal(sends.length, 1);
+});
+
 test("un mensaje entrante en modo asesor se contesta y queda registrado", async () => {
   const { repository, sends, outbound, rows } = harness({ handling: "AI" });
   const { model, seen } = modelSaying("Contame de cuánto disponés y qué cuota podés pagar");

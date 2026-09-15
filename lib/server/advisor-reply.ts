@@ -14,6 +14,11 @@ import {
   windowIsOpen,
   type OutboundRuntime,
 } from "./inbox-outbound";
+import {
+  audioAttachment,
+  transcribeAudio,
+  type AdvisorAudioRuntime,
+} from "./advisor-audio";
 
 /** Cuántos mensajes previos ve el asesor. Un chat de venta no necesita más. */
 export const ADVISOR_HISTORY_LIMIT = 20;
@@ -27,6 +32,7 @@ export type AdvisorReplyRuntime = Readonly<{
   repository?: ChannelInboxRepositoryLike;
   outbound?: OutboundRuntime;
   advisor?: AdvisorRuntime;
+  audio?: AdvisorAudioRuntime;
   now?: Date;
 }>;
 
@@ -303,7 +309,27 @@ export async function replyIfAdvisorHandles(
   ) {
     history.pop();
   }
-  const contextSummary = buildAdvisorContext(recentRows, input.message);
+  let effectiveMessage = input.message.trim();
+  const audio = audioAttachment(input.attachmentsJson);
+  if (audio) {
+    try {
+      const transcript = await transcribeAudio(audio, context.platform, runtime.audio);
+      effectiveMessage = [effectiveMessage, `Transcripción del audio del cliente: ${transcript}`]
+        .filter(Boolean).join("\n");
+    } catch (error) {
+      console.error("advisor_audio_failed", {
+        reason: error instanceof Error ? error.message : "UNKNOWN",
+      });
+      await repository.setHandling({
+        conversationId: context.id,
+        handling: "HUMAN",
+        assignedTo: context.assignedTo,
+        updatedAt: now.toISOString(),
+      });
+      return { status: "failed", reason: "AUDIO_UNAVAILABLE" };
+    }
+  }
+  const contextSummary = buildAdvisorContext(recentRows, effectiveMessage);
   const images = includeImages ? imageAttachments(input.attachmentsJson) : [];
 
   const outboundRuntime: OutboundRuntime = {
@@ -315,7 +341,7 @@ export async function replyIfAdvisorHandles(
   let turn;
   try {
     turn = await runAdvisorTurn(
-      { conversationId: context.id, history, message: input.message, images, contextSummary },
+      { conversationId: context.id, history, message: effectiveMessage, images, contextSummary },
       {
         ...runtime.advisor,
         ...(runtime.now ? { now } : {}),
