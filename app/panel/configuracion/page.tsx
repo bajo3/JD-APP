@@ -1,6 +1,7 @@
 import { ChannelAccountForm } from "../_components/ChannelAccountForm";
 import { ChannelAdvisorControls } from "../_components/ChannelAdvisorControls";
 import { PanelShell } from "../_components/PanelShell";
+import Link from "next/link";
 import { getPanelConfigurationData } from "@/lib/server/inbox-panel-data";
 import { advisorIsConfigured, configuredAdvisorProvider } from "@/lib/server/advisor-config";
 
@@ -42,6 +43,7 @@ export default async function ConfiguracionPage() {
             <h2 id="advisor-title">Respuesta automática por canal</h2>
             <p className="panel-muted">Cada canal tiene su propio interruptor. Al desactivarlo, el equipo recupera inmediatamente la atención.</p>
           </div>
+          <Link className="panel-action panel-primary" href="/panel/probar-bot">Probar bot</Link>
         </div>
         <ChannelAdvisorControls accounts={accounts} canActivate={canActivateAdvisor} />
         <p className="settings-safety-note">El agente entiende texto, fotos y notas de voz, y consulta únicamente el stock vigente de JD‑App sincronizado desde JD‑Auto. Si no puede entender o verificar un dato, deriva la conversación sin inventarlo.</p>

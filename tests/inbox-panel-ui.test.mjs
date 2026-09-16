@@ -11,8 +11,25 @@ async function read(path) {
 test("conversaciones entra en la navegación del panel", async () => {
   const navigation = await read("app/panel/_components/PanelNavigation.tsx");
   assert.match(navigation, /\["\/panel\/conversaciones", "Conversaciones"/);
+  assert.match(navigation, /\["\/panel\/probar-bot", "Probar bot"/);
   assert.match(navigation, /\["\/panel\/configuracion", "Configuración"/);
   assert.match(navigation, /aria-current=\{active \? "page"/);
+});
+
+test("el panel ofrece un playground seguro para probar el agente", async () => {
+  const page = await read("app/panel/probar-bot/page.tsx");
+  const component = await read("app/panel/_components/AdvisorTestPanel.tsx");
+  const handler = await read("lib/server/advisor-playground.ts");
+  const route = await read("app/api/v1/admin/advisor-test/route.ts");
+  const settings = await read("app/panel/configuracion/page.tsx");
+  assert.match(page, /Conversación de prueba/);
+  assert.match(component, /Modo prueba seguro/);
+  assert.match(component, /\/api\/v1\/admin\/advisor-test/);
+  assert.match(component, /no crea leads/);
+  assert.match(handler, /adminApiRoute/);
+  assert.match(handler, /testMode: true/);
+  assert.match(route, /advisorTest/);
+  assert.match(settings, /href="\/panel\/probar-bot"/);
 });
 
 test("la cola exige sesión del panel antes de leer nada", async () => {

@@ -48,6 +48,13 @@ export function createAdvisorSession(): AdvisorSession {
 export type AdvisorToolContext = Readonly<{
   conversationId: string;
   session: AdvisorSession;
+  /**
+   * El panel usa este modo para ensayar conversaciones sin tocar el negocio.
+   * Sólo quedan habilitadas las consultas de stock; cualquier acción que
+   * persista, escale o dispare una integración se rechaza antes de entrar al
+   * repositorio correspondiente.
+   */
+  testMode?: boolean;
   access?: DataAccess;
   now?: Date;
   outboundRuntime?: OutboundRuntime;
@@ -986,6 +993,17 @@ export async function runAdvisorTool(
   input: unknown,
   context: AdvisorToolContext,
 ): Promise<AdvisorToolResult> {
+  if (
+    context.testMode &&
+    name !== "buscar_vehiculos" &&
+    name !== "consultar_stock_publicado"
+  ) {
+    return {
+      ok: false,
+      code: "TEST_MODE_NO_WRITES",
+      message: "Modo prueba: esta acción no se guarda ni se ejecuta.",
+    };
+  }
   const args =
     input && typeof input === "object" && !Array.isArray(input)
       ? (input as Record<string, unknown>)

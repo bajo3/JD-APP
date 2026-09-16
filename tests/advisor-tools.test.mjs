@@ -100,6 +100,29 @@ test("una consulta visual sólo devuelve precio desde una coincidencia real de s
   assert.match(vehicle.ficha, /^\/autos\//);
 });
 
+test("el modo prueba bloquea toda acción que persista o escale", async () => {
+  const calls = [];
+  const result = await runAdvisorTool(
+    "registrar_permuta",
+    { marca: "Ford", modelo: "Focus", anio: 2018, kilometraje: 100000, estadoDeclarado: "GOOD" },
+    context({
+      testMode: true,
+      access: {
+        source: "test",
+        stock: { listAvailable: async () => [] },
+        businessProfile: { get: async () => null },
+        appraisals: { create: async (value) => { calls.push(value); throw new Error("no debería escribir"); } },
+      },
+    }),
+  );
+  assert.deepEqual(result, {
+    ok: false,
+    code: "TEST_MODE_NO_WRITES",
+    message: "Modo prueba: esta acción no se guarda ni se ejecuta.",
+  });
+  assert.equal(calls.length, 0);
+});
+
 test("una foto sin pistas suficientes no habilita al agente a inventar una unidad", async () => {
   const result = await runAdvisorTool(
     "consultar_stock_publicado",

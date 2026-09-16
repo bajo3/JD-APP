@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   ["/panel", "Resumen", "⌂"],
   ["/panel/conversaciones", "Conversaciones", "◐"],
+  ["/panel/probar-bot", "Probar bot", "✧"],
   ["/panel/leads", "Leads", "◌"],
   ["/panel/demandas", "Demanda", "◎"],
   ["/panel/stock", "Stock", "▣"],
