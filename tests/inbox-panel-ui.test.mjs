@@ -26,6 +26,8 @@ test("el panel ofrece un playground seguro para probar el agente", async () => {
   assert.match(component, /Modo prueba seguro/);
   assert.match(component, /\/api\/v1\/admin\/advisor-test/);
   assert.match(component, /no crea leads/);
+  assert.match(component, /Ver ficha y todas las fotos/);
+  assert.match(component, /vehicleCards/);
   assert.match(handler, /adminApiRoute/);
   assert.match(handler, /testMode: true/);
   assert.match(route, /advisorTest/);

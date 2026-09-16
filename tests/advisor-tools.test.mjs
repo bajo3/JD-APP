@@ -100,6 +100,66 @@ test("una consulta visual sólo devuelve precio desde una coincidencia real de s
   assert.match(vehicle.ficha, /^\/autos\//);
 });
 
+test("una consulta por modelo devuelve datos, ficha y fotos del stock real", async () => {
+  const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  process.env.NEXT_PUBLIC_SITE_URL = "https://jd-app.example";
+  try {
+    const result = await runAdvisorTool(
+      "consultar_stock_publicado",
+      { marca: "Volkswagen", modelo: "Amarok", tipo: "pickup" },
+      context({
+        access: {
+          source: "test",
+          stock: {
+            async listAvailable() {
+              return [{
+                id: "veh-amarok",
+                slug: "volkswagen-amarok-highline-2023",
+                make: "Volkswagen",
+                model: "Amarok",
+                trim: "Highline",
+                year: 2023,
+                mileageKm: 109000,
+                priceCents: 5_300_000_000,
+                currency: "ARS",
+                priceValidUntil: null,
+                bodyType: "auto",
+                fuelType: "Diesel",
+                transmission: "Automática",
+                color: "Azul",
+                status: "AVAILABLE",
+                source: "jd-auto",
+                lastSyncedAt: NOW.toISOString(),
+                updatedAt: NOW.toISOString(),
+                media: [{
+                  id: "media-amarok-1",
+                  publicUrl: "/api/v1/media/vehicles/media-amarok-1",
+                  altText: "Volkswagen Amarok 2023",
+                  contentType: "image/jpeg",
+                  width: 1600,
+                  height: 900,
+                }],
+              }];
+            },
+          },
+          businessProfile: { async get() { return { stockFreshnessMinutes: 1_440 }; } },
+        },
+      }),
+    );
+    assert.equal(result.ok, true);
+    const [vehicle] = result.data.coincidencias;
+    assert.equal(vehicle.modelo, "Amarok");
+    assert.equal(vehicle.transmision, "Automática");
+    assert.equal(vehicle.precioPublicado, 53_000_000);
+    assert.equal(vehicle.fotoPrincipal, "https://jd-app.example/api/v1/media/vehicles/media-amarok-1");
+    assert.deepEqual(vehicle.fotos, ["https://jd-app.example/api/v1/media/vehicles/media-amarok-1"]);
+    assert.equal(vehicle.ficha, "https://jd-app.example/autos/volkswagen-amarok-highline-2023");
+  } finally {
+    if (originalSiteUrl === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = originalSiteUrl;
+  }
+});
+
 test("el modo prueba bloquea toda acción que persista o escale", async () => {
   const calls = [];
   const result = await runAdvisorTool(

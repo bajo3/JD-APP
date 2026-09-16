@@ -97,6 +97,7 @@ export function advisorTest(request: Request): Promise<Response> {
       escalated: turn.escalated,
       outcome: turn.outcome,
       toolCalls: turn.toolCalls,
+      vehicleCards: turn.vehicleCards,
       testMode: true,
     });
   });

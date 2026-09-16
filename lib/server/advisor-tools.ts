@@ -208,9 +208,10 @@ export const ADVISOR_TOOLS = Object.freeze([
   {
     name: "consultar_stock_publicado",
     description:
-      "Consulta precio y disponibilidad del stock real cuando el cliente pregunta por una unidad de una foto, " +
-      "Story o publicación. Usá únicamente marca, modelo o tipo que sean visibles o que el cliente haya dicho. " +
-      "Nunca elijas una coincidencia dudosa como si fuera exacta.",
+      "Consulta inmediatamente el stock real cuando el cliente pregunta si hay una marca, modelo o tipo, " +
+      "o por una unidad de una foto, Story o publicación. Devuelve datos, fotos y ficha pública. " +
+      "Usá únicamente marca, modelo o tipo que sean visibles o que el cliente haya dicho. " +
+      "Nunca afirmes que hay una unidad sin ejecutar esta herramienta ni elijas una coincidencia dudosa como exacta.",
     strict: true,
     input_schema: {
       type: "object",
@@ -369,6 +370,13 @@ function reviewUrl(token: string): string {
   return configured && /^https:\/\//i.test(configured) ? `${configured}${path}` : path;
 }
 
+function publicSiteUrl(pathOrUrl: string): string {
+  if (/^https:\/\/[^\s]+$/i.test(pathOrUrl)) return pathOrUrl;
+  const path = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "");
+  return configured && /^https:\/\//i.test(configured) ? `${configured}${path}` : path;
+}
+
 function failure(error: unknown): AdvisorToolResult {
   if (error instanceof ApiError) {
     return { ok: false, code: error.code, message: error.message };
@@ -413,7 +421,11 @@ async function consultarStockPublicado(
     access.stock.listAvailable(),
     access.businessProfile.get(),
   ]);
-  const filters = [marca, modelo, tipo].filter((value): value is string => Boolean(value));
+  // Un modelo explícito manda sobre el tipo inferido por el modelo de IA. Por
+  // ejemplo, si pregunta "Amarok" y la fuente la clasificó como "auto", no
+  // perdemos la coincidencia porque el asesor además haya inferido "pickup".
+  const filters = [marca, modelo, ...(modelo ? [] : [tipo])]
+    .filter((value): value is string => Boolean(value));
   const matches = stock.filter((vehicle) => {
     const haystack = normalizedSearch([
       vehicle.make,
@@ -437,10 +449,17 @@ async function consultarStockPublicado(
       anio: dto.year,
       kilometrajeKm: dto.mileageKm,
       tipo: dto.bodyType,
+      combustible: dto.fuelType,
+      transmision: dto.transmission,
+      color: dto.color,
       disponibilidad: available ? "confirmada" : "consultar",
       precioPublicado: available ? Math.round(dto.price.cents) / 100 : null,
       moneda: available ? dto.price.currency : null,
-      ficha: `/autos/${encodeURIComponent(dto.slug)}`,
+      fotoPrincipal: dto.media[0]?.url ? publicSiteUrl(dto.media[0].url) : null,
+      fotos: dto.media
+        .flatMap((media) => media.url ? [publicSiteUrl(media.url)] : [])
+        .slice(0, 3),
+      ficha: publicSiteUrl(`/autos/${encodeURIComponent(dto.slug)}`),
       demo: dto.demo,
     };
   });
@@ -453,8 +472,10 @@ async function consultarStockPublicado(
       coincidenciaUnica: matches.length === 1,
       instruccion:
         matches.length === 1
-          ? "Presentalo en condicional: «si te referís a este»."
-          : "No elijas uno por tu cuenta; pedí una sola aclaración para identificar la publicación.",
+          ? "Respondé primero con sus datos, foto principal y ficha. Si la referencia era ambigua, presentalo como «si te referís a este». No preguntes financiación antes de responder la consulta."
+          : matches.length > 1
+            ? "Mostrá las coincidencias con sus datos y ficha; después pedí una sola aclaración si hace falta elegir."
+            : "Decí con claridad que ese modelo no aparece publicado hoy. No afirmes que puede haberlo ni preguntes cuota; ofrecé buscar otra alternativa.",
       fuente: access.source,
       consultadoEn: now.toISOString(),
     },

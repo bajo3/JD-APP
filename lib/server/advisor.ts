@@ -40,6 +40,16 @@ Cómo hablás:
 - No pedís presupuesto, anticipo o cuota hasta que realmente hagan falta para
   responder lo que la persona está buscando. Una pregunta general merece una
   respuesta general antes de empezar a calificar el lead.
+- Si el cliente nombra una marca o modelo y pregunta si está disponible, usás
+  consultar_stock_publicado inmediatamente. Primero respondés qué hay en el
+  stock real; no preguntás si lo quiere usado o cero, presupuesto ni cuota.
+- Si hay coincidencias, mostrás primero marca, modelo, versión, año,
+  kilometraje, transmisión y precio cuando esté vigente. También compartís la
+  foto principal y la ficha que devuelve la herramienta. Después, y sólo si el
+  cliente pregunta por financiación, averiguás anticipo y cuota.
+- Si no hay coincidencias, decís directo que hoy no aparece publicado. No
+  respondés «puede ser», «sí, puede haber» ni lo matás a preguntas; ofrecés
+  buscarle una alternativa parecida.
 - Si el cliente cambia de tema, hace un chiste o corrige algo, acompañás el
   contexto y no repetís mecánicamente la última pregunta.
 - Si recibís una transcripción de audio, la tratás como lo que dijo el cliente;
@@ -53,8 +63,9 @@ Cómo hablás:
 - Si el cliente manda una foto, observás sólo lo visible. Podés describir o
   reconocer una marca o modelo probable, pero nunca afirmás año, versión,
   kilometraje, disponibilidad ni precio sólo por la imagen.
-- Cuando pregunten "precio?" sobre una foto o publicación, usás
-  consultar_stock_publicado con las pistas visibles. Si hay una única
+- Cuando pregunten "precio?" sobre una foto o publicación, o "¿tenés X?" por
+  una marca o modelo escrito, usás consultar_stock_publicado con esas pistas.
+  Si hay una única
   coincidencia clara, respondés con esa unidad y aclarás "si te referís a este";
   si hay varias o ninguna, pedís una sola aclaración concreta.
 
@@ -72,6 +83,8 @@ Reglas que no se rompen nunca:
 - Toda unidad que menciones tiene que venir de buscar_vehiculos o consultar_stock_publicado. Si no vino de una de esas herramientas, no existe para vos.
 - Toda cuota tiene que venir de simular_operacion y va acompañada del código de la operación. Un precio publicado también puede venir de consultar_stock_publicado.
 - Para buscar qué puede pagar necesitás presupuesto, anticipo y cuota máxima. Si falta alguno, preguntalo; no lo supongas. Una consulta puntual de precio sobre una publicación usa consultar_stock_publicado y no exige esos tres datos.
+- Buscar por modelo o disponibilidad no es buscar financiación: nunca exijas
+  presupuesto, anticipo o cuota para consultar_stock_publicado.
 - Si una unidad vuelve con disponibilidad "consultar", no le pongas precio ni cuota: decí que hay que confirmar disponibilidad.
 - Si la respuesta trae avisos de que el tarifario es DEMO o ilustrativo, decilo con todas las letras: son cifras de ejemplo, no una oferta.
 - Nunca prometés reservar, entregar, bonificar ni sostener un precio. Eso lo confirma una persona.
@@ -140,6 +153,24 @@ export type AdvisorTurn = Readonly<{
     | "escalated_model_error"
     | "escalated_refusal";
   toolCalls: readonly Readonly<{ name: string; ok: boolean; code?: string }>[];
+  vehicleCards: readonly AdvisorVehicleCard[];
+}>;
+
+export type AdvisorVehicleCard = Readonly<{
+  vehicleId: string;
+  make: string;
+  model: string;
+  trim: string | null;
+  year: number;
+  mileageKm: number | null;
+  transmission: string | null;
+  fuelType: string | null;
+  color: string | null;
+  availability: "confirmada" | "consultar";
+  price: number | null;
+  currency: string | null;
+  detailUrl: string;
+  photos: readonly string[];
 }>;
 
 export type AdvisorContextSummary = Readonly<{
@@ -433,6 +464,45 @@ function toolUses(
     }));
 }
 
+function optionalCardText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function vehicleCardsFromTool(result: Awaited<ReturnType<typeof runAdvisorTool>>): AdvisorVehicleCard[] {
+  if (!result.ok || !Array.isArray(result.data.coincidencias)) return [];
+  return result.data.coincidencias.flatMap((raw): AdvisorVehicleCard[] => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const item = raw as Record<string, unknown>;
+    const vehicleId = optionalCardText(item.vehicleId);
+    const make = optionalCardText(item.marca);
+    const model = optionalCardText(item.modelo);
+    const detailUrl = optionalCardText(item.ficha);
+    const year = item.anio;
+    if (!vehicleId || !make || !model || !detailUrl || !Number.isSafeInteger(year)) return [];
+    const photos = Array.isArray(item.fotos)
+      ? item.fotos.filter((value): value is string => typeof value === "string" && value.trim().length > 0).slice(0, 3)
+      : [];
+    return [{
+      vehicleId,
+      make,
+      model,
+      trim: optionalCardText(item.version),
+      year: year as number,
+      mileageKm: Number.isSafeInteger(item.kilometrajeKm) ? item.kilometrajeKm as number : null,
+      transmission: optionalCardText(item.transmision),
+      fuelType: optionalCardText(item.combustible),
+      color: optionalCardText(item.color),
+      availability: item.disponibilidad === "confirmada" ? "confirmada" : "consultar",
+      price: typeof item.precioPublicado === "number" && Number.isFinite(item.precioPublicado)
+        ? item.precioPublicado
+        : null,
+      currency: optionalCardText(item.moneda),
+      detailUrl,
+      photos,
+    }];
+  });
+}
+
 /**
  * Un turno del asesor. Devuelve el texto que habría que mandarle al cliente,
  * pero **no lo manda**: el envío pasa por `sendOutboundMessage`, que es el que
@@ -460,6 +530,7 @@ export async function runAdvisorTurn(
     ...runtime.toolContext,
   };
   const toolCalls: Array<{ name: string; ok: boolean; code?: string }> = [];
+  const vehicleCards: AdvisorVehicleCard[] = [];
   const currentContent: string | AdvisorContentBlock[] = input.images && input.images.length > 0
     ? [
         { type: "text", text: input.message || "El cliente envió una imagen sin texto." },
@@ -484,7 +555,7 @@ export async function runAdvisorTurn(
       ok: result.ok,
       ...(result.ok ? {} : { code: result.code }),
     });
-    return { reply: null, escalated: true, outcome, toolCalls };
+    return { reply: null, escalated: true, outcome, toolCalls, vehicleCards };
   };
 
   const model = runtime.model ?? defaultModel(runtime);
@@ -537,7 +608,7 @@ export async function runAdvisorTurn(
       if (reply.length === 0) {
         return escalate("escalated_no_reply", "EL_ASESOR_NO_TIENE_RESPUESTA");
       }
-      return { reply, escalated: false, outcome: "replied", toolCalls };
+      return { reply, escalated: false, outcome: "replied", toolCalls, vehicleCards };
     }
 
     if (round === MAX_TOOL_ROUNDS) {
@@ -550,6 +621,11 @@ export async function runAdvisorTurn(
     let terminalReply: string | null = null;
     for (const use of uses) {
       const result = await runAdvisorTool(use.name, use.input, context);
+      if (use.name === "consultar_stock_publicado") {
+        for (const card of vehicleCardsFromTool(result)) {
+          if (!vehicleCards.some((current) => current.vehicleId === card.vehicleId)) vehicleCards.push(card);
+        }
+      }
       toolCalls.push({
         name: use.name,
         ok: result.ok,
@@ -578,6 +654,7 @@ export async function runAdvisorTurn(
         escalated: true,
         outcome: "escalated",
         toolCalls,
+        vehicleCards,
       };
     }
   }

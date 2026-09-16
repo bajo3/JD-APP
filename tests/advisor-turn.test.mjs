@@ -273,6 +273,44 @@ test("cuando el asesor escala, el turno termina ahí y no negocia más", async (
   assert.deepEqual(calls, [["handling", "HUMAN"], ["motivo", "quiere señar la unidad"]]);
 });
 
+test("consultar un modelo conserva una tarjeta con datos y fotos verificadas", async () => {
+  const { client } = scriptedModel([
+    {
+      stop_reason: "tool_use",
+      content: [{
+        type: "tool_use",
+        id: "tu-stock-amarok",
+        name: "consultar_stock_publicado",
+        input: { marca: "Volkswagen", modelo: "Amarok", tipo: null },
+      }],
+    },
+    {
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "Sí, tengo una Amarok Highline 2023. Te paso la ficha." }],
+    },
+  ]);
+  const result = await turn(client, {
+    message: "¿Tenés alguna Amarok?",
+    toolContext: {
+      access: {
+        source: "test",
+        stock: { async listAvailable() { return [{
+          id: "veh-amarok", slug: "volkswagen-amarok-highline-2023", make: "Volkswagen", model: "Amarok",
+          trim: "Highline", year: 2023, mileageKm: 109000, priceCents: 5_300_000_000, currency: "ARS",
+          priceValidUntil: null, bodyType: "Pickup", fuelType: "Diesel", transmission: "Automática", color: "Azul",
+          status: "AVAILABLE", source: "jd-auto", lastSyncedAt: NOW.toISOString(), updatedAt: NOW.toISOString(),
+          media: [{ id: "media-1", publicUrl: "/api/v1/media/vehicles/media-1", altText: "Amarok", contentType: "image/jpeg", width: 1600, height: 900 }],
+        }]; } },
+        businessProfile: { async get() { return { stockFreshnessMinutes: 1_440 }; } },
+      },
+    },
+  });
+  assert.equal(result.reply, "Sí, tengo una Amarok Highline 2023. Te paso la ficha.");
+  assert.equal(result.vehicleCards.length, 1);
+  assert.equal(result.vehicleCards[0].model, "Amarok");
+  assert.deepEqual(result.vehicleCards[0].photos, ["/api/v1/media/vehicles/media-1"]);
+});
+
 test("OpenAI Responses usa el mismo contrato seguro de mensajes y herramientas", async () => {
   let request;
   const client = openAIClient("sk-openai-clave-de-prueba", async (url, init) => {
@@ -452,6 +490,9 @@ test("el asesor no puede dar vueltas para siempre pidiendo herramientas", async 
 
 test("el prompt le prohíbe explícitamente inventar y le exige escalar", () => {
   assert.match(ADVISOR_SYSTEM_PROMPT, /No inventás stock, precios, cuotas/);
+  assert.match(ADVISOR_SYSTEM_PROMPT, /consultar_stock_publicado inmediatamente/);
+  assert.match(ADVISOR_SYSTEM_PROMPT, /no preguntás si lo quiere usado o cero, presupuesto ni cuota/);
+  assert.match(ADVISOR_SYSTEM_PROMPT, /No\s+respondés «puede ser», «sí, puede haber»/);
   assert.match(ADVISOR_SYSTEM_PROMPT, /tiene que venir de buscar_vehiculos/);
   assert.match(ADVISOR_SYSTEM_PROMPT, /tiene que venir de simular_operacion/);
   assert.match(ADVISOR_SYSTEM_PROMPT, /DEMO/);

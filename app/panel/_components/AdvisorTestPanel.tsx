@@ -1,31 +1,76 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
+
+type VehicleCard = Readonly<{
+  vehicleId: string;
+  make: string;
+  model: string;
+  trim: string | null;
+  year: number;
+  mileageKm: number | null;
+  transmission: string | null;
+  fuelType: string | null;
+  color: string | null;
+  availability: "confirmada" | "consultar";
+  price: number | null;
+  currency: string | null;
+  detailUrl: string;
+  photos: readonly string[];
+}>;
 
 type Message = Readonly<{
   id: string;
   role: "user" | "assistant";
   content: string;
+  vehicleCards?: readonly VehicleCard[];
 }>;
 
 type ApiPayload = Readonly<{
   data?: {
     reply?: string | null;
     escalated?: boolean;
+    vehicleCards?: VehicleCard[];
   };
   error?: { message?: string };
 }>;
 
 const STARTERS = [
-  "Hola, ¿qué autos tienen disponibles?",
-  "Busco un auto para trabajar y puedo pagar 40 lucas por mes.",
-  "¿Cuánto sale el BMW de la publicación?",
+  "¿Tenés algún Gol Trend?",
+  "¿Tenés alguna Amarok?",
+  "Busco un auto automático para la familia.",
 ];
 
 function newId(): string {
   return typeof crypto?.randomUUID === "function"
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
+}
+
+function safeInternalPath(value: string, kind: "photo" | "detail"): string | null {
+  try {
+    const url = new URL(value, "https://jd-app.invalid");
+    const pattern = kind === "photo"
+      ? /^\/api\/v1\/media\/vehicles\/[A-Za-z0-9._:-]+$/
+      : /^\/autos\/[A-Za-z0-9._~-]+$/;
+    return pattern.test(url.pathname) ? url.pathname : null;
+  } catch {
+    return null;
+  }
+}
+
+function money(value: number | null, currency: string | null): string | null {
+  if (value === null || !currency) return null;
+  try {
+    return new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return null;
+  }
 }
 
 export function AdvisorTestPanel() {
@@ -56,7 +101,12 @@ export function AdvisorTestPanel() {
       }
       const reply = payload.data.reply;
       if (typeof reply === "string" && reply.trim()) {
-        setMessages((current) => [...current, { id: newId(), role: "assistant", content: reply.trim() }]);
+        setMessages((current) => [...current, {
+          id: newId(),
+          role: "assistant",
+          content: reply.trim(),
+          vehicleCards: payload.data?.vehicleCards ?? [],
+        }]);
       } else if (payload.data.escalated) {
         setMessages((current) => [...current, {
           id: newId(),
@@ -102,6 +152,27 @@ export function AdvisorTestPanel() {
               <li className={`advisor-test-message advisor-test-${message.role}`} key={message.id}>
                 <small>{message.role === "user" ? "Cliente" : "Agente JD"}</small>
                 <p>{message.content}</p>
+                {message.vehicleCards && message.vehicleCards.length > 0 ? (
+                  <div className="advisor-test-vehicle-grid">
+                    {message.vehicleCards.map((vehicle) => {
+                      const photo = vehicle.photos.map((value) => safeInternalPath(value, "photo")).find(Boolean) ?? null;
+                      const detail = safeInternalPath(vehicle.detailUrl, "detail");
+                      const formattedPrice = money(vehicle.price, vehicle.currency);
+                      return (
+                        <article className="advisor-test-vehicle" key={vehicle.vehicleId}>
+                          {photo ? <Image unoptimized src={photo} alt={`${vehicle.make} ${vehicle.model} ${vehicle.year}`} width={640} height={360} /> : null}
+                          <div>
+                            <strong>{vehicle.make} {vehicle.model} {vehicle.trim ?? ""}</strong>
+                            <span>{vehicle.year} · {vehicle.mileageKm === null ? "Kilometraje a confirmar" : `${vehicle.mileageKm.toLocaleString("es-AR")} km`}</span>
+                            <span>{[vehicle.transmission, vehicle.fuelType, vehicle.color].filter(Boolean).join(" · ")}</span>
+                            <b>{formattedPrice ?? "Precio y disponibilidad a confirmar"}</b>
+                            {detail ? <a href={detail} target="_blank" rel="noreferrer">Ver ficha y todas las fotos ↗</a> : null}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </li>
             ))}
             {busy ? <li className="advisor-test-thinking" aria-label="El agente está pensando">Agente JD está escribiendo…</li> : null}
